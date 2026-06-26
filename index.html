@@ -83,6 +83,13 @@
   .legend span { display: flex; align-items: center; gap: 5px; }
   .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
   .filter-note { font-size: 11px; color: var(--text3); background: var(--surface2); border-radius: 4px; padding: 2px 8px; }
+  .bep-status { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; }
+  .bep-status.over { background:var(--success-bg); color:var(--success-text); }
+  .bep-status.under { background:var(--danger-bg); color:var(--danger); }
+  .bep-bar-wrap { display:flex; align-items:center; gap:10px; }
+  .bep-bar-bg { flex:1; height:8px; background:var(--surface2); border-radius:4px; overflow:hidden; }
+  .bep-bar-fill { height:100%; border-radius:4px; transition:width .4s; }
+  #bep-load-status { font-size:12px; color:var(--text3); }
   @media (max-width: 680px) { .container { padding: 1rem; } header { padding: 0 1rem; } .filter-bar { gap: 8px; } }
 </style>
 </head>
@@ -158,6 +165,15 @@
       </div>
     </div>
 
+    <!-- BEP 달성률 -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title"><span class="dot"></span> 차종별 BEP 달성률</div>
+        <span id="bep-load-status" style="font-size:12px;color:var(--text3)">BEP 데이터 불러오는 중...</span>
+      </div>
+      <div id="bep-content" style="text-align:center;padding:2rem;color:var(--text3);font-size:13px">불러오는 중...</div>
+    </div>
+
     <div class="section">
       <div class="section-header">
         <div class="section-title"><span class="dot red"></span> 저매출 차량 추출</div>
@@ -197,6 +213,97 @@
 
 <script>
 let rawRows = [], filteredVehicles = [], distChart = null;
+
+/* ── BEP 데이터 (구글 시트) ── */
+let bepMap = {};
+const BEP_CSV_URL = 'https://docs.google.com/spreadsheets/d/1YFejyDY9gfhasFMUHyvorvkVbAwd5die2cO8I_5Z34g/export?format=csv&gid=1898050608';
+
+async function loadBEP() {
+  try {
+    const res = await fetch(BEP_CSV_URL);
+    if (!res.ok) throw new Error('fetch 실패');
+    const text = await res.text();
+    const rows = text.split('\n').map(r => {
+      const cols = []; let cur = '', inQ = false;
+      for (const c of r) {
+        if (c === '"') { inQ = !inQ; }
+        else if (c === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+        else cur += c;
+      }
+      cols.push(cur.trim());
+      return cols;
+    });
+    bepMap = {};
+    rows.forEach(cols => {
+      const name = normalizeCarType((cols[2] || '').replace(/"/g,'').trim());
+      const bepRaw = (cols[19] || '').replace(/"/g,'').replace(/,/g,'').trim();
+      const bep = parseFloat(bepRaw);
+      if (name && !isNaN(bep) && bep > 0) bepMap[name] = bep;
+    });
+    const count = Object.keys(bepMap).length;
+    document.getElementById('bep-load-status').textContent = `✓ BEP ${count}개 차종 로드됨`;
+    renderBEP();
+  } catch(e) {
+    document.getElementById('bep-load-status').textContent = '⚠️ BEP 로드 실패 — 시트 공유 설정 확인';
+    document.getElementById('bep-content').innerHTML = `<p style="color:var(--text3);font-size:13px;text-align:center;padding:1rem">BEP 데이터를 불러오지 못했어요.</p>`;
+  }
+}
+
+function renderBEP() {
+  if (!filteredVehicles.length || !Object.keys(bepMap).length) return;
+  const ctMap = {};
+  filteredVehicles.forEach(v => {
+    const ct = v.carType || '미분류';
+    if (!ctMap[ct]) ctMap[ct] = { total: 0, cnt: 0 };
+    ctMap[ct].total += v.total; ctMap[ct].cnt++;
+  });
+  const items = Object.entries(ctMap)
+    .filter(([ct]) => bepMap[ct] !== undefined)
+    .map(([ct, v]) => {
+      const avgRevenue = v.total / v.cnt;
+      const bep = bepMap[ct];
+      const rate = avgRevenue / bep * 100;
+      return { ct, avgRevenue, bep, rate, vCnt: v.cnt };
+    })
+    .sort((a, b) => a.rate - b.rate);
+
+  if (!items.length) {
+    document.getElementById('bep-content').innerHTML = '<p style="color:var(--text3);font-size:13px;text-align:center;padding:1rem">조회 조건에 맞는 BEP 매칭 차종이 없어요</p>';
+    return;
+  }
+  const overCount = items.filter(i => i.rate >= 100).length;
+  const underCount = items.length - overCount;
+  document.getElementById('bep-content').innerHTML = `
+    <div style="display:flex;gap:12px;margin-bottom:1.25rem;flex-wrap:wrap">
+      <div style="background:var(--success-bg);border-radius:var(--radius-sm);padding:7px 14px;font-size:13px">
+        <span style="color:var(--success-text);font-weight:600">${overCount}개 차종</span><span style="color:var(--text3);margin-left:4px">BEP 달성</span>
+      </div>
+      <div style="background:var(--danger-bg);border-radius:var(--radius-sm);padding:7px 14px;font-size:13px">
+        <span style="color:var(--danger);font-weight:600">${underCount}개 차종</span><span style="color:var(--text3);margin-left:4px">BEP 미달성</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${items.map(item => {
+        const rate = Math.round(item.rate);
+        const isOver = rate >= 100;
+        const barWidth = Math.min(rate, 150);
+        const barColor = isOver ? '#1D9E75' : '#E24B4A';
+        const badge = isOver
+          ? `<span class="bep-status over">✓ ${rate}%</span>`
+          : `<span class="bep-status under">✗ ${rate}%</span>`;
+        return `<div style="display:grid;grid-template-columns:160px 1fr 130px 80px;align-items:center;gap:12px">
+          <span style="font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${item.ct}">${item.ct}</span>
+          <div class="bep-bar-bg"><div class="bep-bar-fill" style="width:${barWidth}%;background:${barColor}"></div></div>
+          <span style="font-size:12px;color:var(--text2);text-align:right;white-space:nowrap;line-height:1.6">
+            대당 ${Math.round(item.avgRevenue).toLocaleString()}원<br>
+            <span style="font-size:11px;color:var(--text3)">BEP ${Math.round(item.bep).toLocaleString()}원</span>
+          </span>
+          ${badge}
+        </div>`;
+      }).join('')}
+    </div>
+    <p style="font-size:11px;color:var(--text3);margin-top:1rem">* 대당매출 = 조회 기간 내 차종 총매출 ÷ 차량 수 · BEP는 월 기준</p>`;
+}
 
 /* ── 내카드주유 FALSE 판별 ── */
 function isNotMyCard(val) {
@@ -315,6 +422,7 @@ function applyFilters() {
   renderMetrics();
   renderChart();
   renderThreshold();
+  renderBEP();
 }
 
 /* ── Metrics ── */
@@ -475,6 +583,10 @@ function downloadCSV() {
   const url = URL.createObjectURL(blob); const a = document.createElement('a');
   a.href = url; a.download = `저매출차량_${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(url);
 }
+</script>
+<script>
+// 페이지 로드 시 BEP 자동 fetch
+loadBEP();
 </script>
 </body>
 </html>
