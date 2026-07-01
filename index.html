@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>투루카 차량별 매출 대시보드</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root{--bg:#f5f5f3;--surface:#fff;--surface2:#f0efe9;--border:rgba(0,0,0,.10);--border2:rgba(0,0,0,.18);--text:#1a1a18;--text2:#5f5e5a;--text3:#888780;--accent:#185FA5;--danger:#A32D2D;--danger-bg:#FCEBEB;--warn-bg:#FAEEDA;--warn-text:#854F0B;--success-bg:#EAF3DE;--success-text:#3B6D11;--pro-bg:#EEEDFE;--pro-text:#3C3489;--radius:10px;--radius-sm:6px}
+  @media(prefers-color-scheme:dark){:root{--bg:#1c1c1a;--surface:#262624;--surface2:#2e2e2b;--border:rgba(255,255,255,.10);--border2:rgba(255,255,255,.18);--text:#f0efe9;--text2:#b4b2a9;--text3:#888780;--accent:#85B7EB;--danger:#F09595;--danger-bg:#3a1a1a;--warn-bg:#3a2a10;--warn-text:#FAC775;--success-bg:#1a2e10;--success-text:#C0DD97;--pro-bg:#2a2660;--pro-text:#AFA9EC}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Pretendard','Apple SD Gothic Neo',sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
+  header{background:var(--surface);border-bottom:.5px solid var(--border);padding:0 2rem;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+  header h1{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .badge-turu{background:#185FA5;color:#fff;font-size:11px;padding:2px 8px;border-radius:4px;font-weight:500}
+  .container{max-width:1200px;margin:0 auto;padding:1.5rem 2rem}
+  .upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:1.5rem}
+  .upload-zone{border:1.5px dashed var(--border2);border-radius:var(--radius);padding:1.75rem 1rem;text-align:center;cursor:pointer;transition:background .15s}
+  .upload-zone:hover,.upload-zone.drag{background:var(--surface2)}
+  .upload-zone svg{width:32px;height:32px;stroke:var(--text3);margin-bottom:.4rem}
+  .upload-zone p{font-size:14px;color:var(--text2);margin-bottom:.2rem}
+  .upload-zone .hint{font-size:11px;color:var(--text3)}
+  .upload-zone .status{font-size:12px;color:var(--accent);margin-top:6px;font-weight:500}
+  input[type=file]{display:none}
+  .filter-bar{background:var(--surface);border:.5px solid var(--border);border-radius:var(--radius);padding:.85rem 1.25rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:1.25rem}
+  .filter-bar label{font-size:12px;color:var(--text3);white-space:nowrap}
+  .filter-bar input[type=date],.filter-bar select{font-size:13px;padding:5px 10px;border-radius:var(--radius-sm);border:.5px solid var(--border2);background:var(--surface2);color:var(--text);outline:none;cursor:pointer}
+  .filter-bar select.active-filter{background:var(--warn-bg);border-color:var(--warn-text);font-weight:600}
+  .filter-bar input[type=range]{accent-color:var(--accent)}
+  .filter-sep{width:.5px;height:24px;background:var(--border);margin:0 4px}
+  .btn{font-size:13px;padding:6px 14px;border-radius:var(--radius-sm);border:.5px solid var(--border2);background:var(--surface);color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s;white-space:nowrap}
+  .btn:hover{background:var(--surface2)}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn.primary:hover{opacity:.88}
+  .ml-auto{margin-left:auto}
+  .radio-group{display:flex;border:.5px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden}
+  .radio-group label{font-size:13px;padding:6px 14px;cursor:pointer;background:var(--surface);color:var(--text2);transition:background .12s;white-space:nowrap}
+  .radio-group input{display:none}
+  .radio-group input:checked+label{background:var(--accent);color:#fff}
+  .metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:1.25rem}
+  .metric-card{background:var(--surface);border:.5px solid var(--border);border-radius:var(--radius);padding:1rem 1.25rem}
+  .metric-card .m-label{font-size:12px;color:var(--text3);margin-bottom:6px}
+  .metric-card .m-value{font-size:24px;font-weight:600;color:var(--text);line-height:1.1}
+  .metric-card .m-unit{font-size:11px;color:var(--text3);margin-top:3px}
+  .metric-card.danger .m-value{color:var(--danger)}
+  .section{background:var(--surface);border:.5px solid var(--border);border-radius:var(--radius);padding:1.25rem 1.5rem;margin-bottom:1.25rem}
+  .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px}
+  .section-title{font-size:14px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block}
+  .dot.red{background:#E24B4A}
+  .chart-wrap{position:relative;width:100%;height:240px}
+  .table-scroll{overflow-x:auto;border-radius:var(--radius-sm);border:.5px solid var(--border)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{background:var(--surface2);padding:9px 14px;text-align:left;font-weight:600;color:var(--text2);font-size:12px;border-bottom:.5px solid var(--border);white-space:nowrap}
+  tbody tr{border-bottom:.5px solid var(--border)}
+  tbody tr:last-child{border-bottom:none}
+  tbody tr:hover{background:var(--surface2)}
+  tbody td{padding:9px 14px;color:var(--text);white-space:nowrap}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+  .badge.low{background:var(--danger-bg);color:var(--danger)}
+  .badge.mid{background:var(--warn-bg);color:var(--warn-text)}
+  .badge.high{background:var(--success-bg);color:var(--success-text)}
+  .badge.mix{background:var(--pro-bg);color:var(--pro-text)}
+  .empty-row td{text-align:center;color:var(--text3);padding:2rem}
+  .legend{display:flex;gap:16px;font-size:12px;color:var(--text3)}
+  .legend span{display:flex;align-items:center;gap:5px}
+  .legend-dot{width:10px;height:10px;border-radius:2px}
+  .bep-status{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;white-space:nowrap}
+  .bep-status.over{background:var(--success-bg);color:var(--success-text)}
+  .bep-status.under{background:var(--danger-bg);color:var(--danger)}
+  .bar-bg{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;flex:1;display:flex}
+  .bar-fill{height:100%}
+  .tab-btn{font-size:12px;padding:4px 12px;border:none;cursor:pointer;transition:background .1s;border-radius:6px}
+  .row-highlight{background:var(--warn-bg) !important;border-radius:6px}
+  .sub-row{font-size:11px;color:var(--text3);display:flex;justify-content:space-between;padding:1px 0}
+  @media(max-width:680px){.container{padding:1rem}header{padding:0 1rem}.filter-bar{gap:8px}.upload-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="badge-turu">투루카</span> 차량별 매출 대시보드</h1>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span id="bep-status" style="font-size:12px;color:var(--text3)">BEP 로드 중...</span>
+  </div>
+</header>
+
+<div class="container">
+  <div class="upload-grid">
+    <div class="upload-zone" id="zone-round" onclick="document.getElementById('input-round').click()">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="16 8 12 4 8 8"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
+      <p>🔄 왕복(카셰어링) 예약 데이터</p>
+      <p class="hint">xlsx · csv · 내카드주유 FALSE만 집계</p>
+      <p class="status" id="status-round"></p>
+    </div>
+    <input type="file" id="input-round" accept=".csv,.xlsx,.xls">
+    <div class="upload-zone" id="zone-oneway" onclick="document.getElementById('input-oneway').click()">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="16 8 12 4 8 8"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
+      <p>➡️ 편도(리턴프리) 대여 데이터</p>
+      <p class="hint">xlsx · csv · 선택사항</p>
+      <p class="status" id="status-oneway"></p>
+    </div>
+    <input type="file" id="input-oneway" accept=".csv,.xlsx,.xls">
+  </div>
+
+  <div id="dashboard" style="display:none">
+    <div class="filter-bar">
+      <div class="radio-group" id="usage-radio">
+        <input type="radio" name="usage" id="usage-all" value="all" checked onchange="setUsageMode('all')"><label for="usage-all">전체</label>
+        <input type="radio" name="usage" id="usage-round" value="round" onchange="setUsageMode('round')"><label for="usage-round">왕복전용</label>
+        <input type="radio" name="usage" id="usage-mix" value="mix" onchange="setUsageMode('mix')"><label for="usage-mix">혼용</label>
+      </div>
+      <div class="filter-sep"></div>
+      <label>기간</label>
+      <input type="date" id="date-from">
+      <span style="font-size:12px;color:var(--text3)">~</span>
+      <input type="date" id="date-to">
+      <div class="filter-sep"></div>
+      <label>지역</label>
+      <select id="filter-region" onchange="markActive(this)"><option value="">전체</option></select>
+      <label>차종</label>
+      <select id="filter-type" onchange="markActive(this)"><option value="">전체</option></select>
+      <label>차량구분</label>
+      <select id="filter-vtype" onchange="markActive(this)"><option value="">전체</option></select>
+      <div class="filter-sep"></div>
+      <label>저매출 기준</label>
+      <input type="range" id="threshold-pct" min="5" max="40" step="5" value="20" oninput="onThresholdChange()" style="width:100px">
+      <span id="threshold-label" style="font-size:13px;font-weight:600;color:var(--danger);white-space:nowrap">하위 20%</span>
+      <button class="btn primary ml-auto" onclick="applyFilters()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.23-4.18"/></svg>
+        조회
+      </button>
+    </div>
+
+    <div class="metric-grid">
+      <div class="metric-card"><div class="m-label">분석 차량 수</div><div class="m-value" id="m-total">—</div><div class="m-unit">대 (기간내 운영차량)</div></div>
+      <div class="metric-card"><div class="m-label">대당 평균 매출</div><div class="m-value" id="m-avg">—</div><div class="m-unit">원 (VAT 제외)</div></div>
+      <div class="metric-card"><div class="m-label">가중평균 BEP</div><div class="m-value" id="m-bep">—</div><div class="m-unit">원 (전체기준,VAT제외)</div></div>
+      <div class="metric-card"><div class="m-label">BEP 달성률</div><div class="m-value" id="m-bep-rate">—</div><div class="m-unit">현재토글 대당매출÷BEP</div></div>
+      <div class="metric-card danger"><div class="m-label">저매출 차량 (현재 기준)</div><div class="m-value" id="m-low">—</div><div class="m-unit">대</div></div>
+    </div>
+
+    <div id="usage-breakdown" class="section" style="display:none">
+      <div class="section-header"><div class="section-title"><span class="dot"></span> 왕복매출 / 편도매출 구성</div></div>
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:.75rem">
+        <span style="display:flex;align-items:center;gap:6px;font-size:13px"><span style="width:11px;height:11px;border-radius:3px;background:#378ADD;display:inline-block"></span>왕복매출(카셰어링)</span>
+        <span style="display:flex;align-items:center;gap:6px;font-size:13px"><span style="width:11px;height:11px;border-radius:3px;background:#D4537E;display:inline-block"></span>편도매출(리턴프리)</span>
+      </div>
+      <div class="bar-bg" style="height:14px;border-radius:7px" id="usage-bar"></div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:var(--text2)" id="usage-bar-labels"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title"><span class="dot"></span> 차량별 매출 분포</div>
+        <div class="legend">
+          <span><span class="legend-dot" style="background:#E24B4A"></span>저매출 구간</span>
+          <span><span class="legend-dot" style="background:#378ADD"></span>일반 구간</span>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="distChart"></canvas></div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title"><span class="dot red"></span> 차종 분포 (왕복/편도/합계)</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="cartype-subtitle" style="font-size:12px;color:var(--text3)"></span>
+          <button class="btn" style="font-size:12px;padding:4px 10px" onclick="downloadCartypeCSV()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            CSV 다운로드
+          </button>
+          <div style="display:flex;border:.5px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden">
+            <button class="tab-btn" id="tab-all" onclick="setCartypeTab('all')" style="background:var(--surface);color:var(--text2)">전체</button>
+            <button class="tab-btn" id="tab-low" onclick="setCartypeTab('low')" style="background:var(--accent);color:#fff">저매출</button>
+          </div>
+        </div>
+      </div>
+      <div id="cartype-all-filter" style="display:flex;align-items:center;gap:8px;margin-bottom:1rem">
+        <label style="font-size:12px;color:var(--text3)">최소 차량 수</label>
+        <input type="number" id="cartype-min-vehicle" value="0" min="0" style="width:60px;font-size:13px;padding:4px 8px;border-radius:var(--radius-sm);border:.5px solid var(--border2);background:var(--surface2);color:var(--text);text-align:center" oninput="renderCartypeChart(_lastLow,_lastAll)">
+        <span style="font-size:12px;color:var(--text3)">대 이상</span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th style="width:160px">차종명</th>
+            <th style="width:60px;text-align:right">차량수</th>
+            <th style="text-align:right">왕복매출(대당)</th>
+            <th style="text-align:right">편도매출(대당)</th>
+            <th style="text-align:right">합계매출(대당)</th>
+            <th style="text-align:right">총매출(VAT제외)</th>
+            <th style="width:70px;text-align:right">매출비중</th>
+          </tr></thead>
+          <tbody id="cartype-table-body"></tbody>
+        </table>
+      </div>
+      <div id="cartype-more-wrap" style="margin-top:8px;text-align:center;display:none">
+        <button id="cartype-more-btn" onclick="toggleCartypeMore()" style="font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;padding:4px 8px"></button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title"><span class="dot"></span> 차종별 BEP 달성률 (합계매출 ÷ BEP)</div>
+        <span id="bep-load-status" style="font-size:12px;color:var(--text3)"></span>
+      </div>
+      <div id="bep-content" style="text-align:center;padding:2rem;color:var(--text3);font-size:13px">예약 데이터를 먼저 불러오세요</div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title"><span class="dot"></span> 차량유형별 대당매출 &amp; BEP 달성</div>
+      </div>
+      <div id="vtype-content" style="text-align:center;padding:2rem;color:var(--text3);font-size:13px">예약 데이터를 먼저 불러오세요</div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title"><span class="dot red"></span> 저매출 차량 추출</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="low-count-label" style="font-size:13px;color:var(--text2)"></span>
+          <button class="btn" onclick="downloadCSV()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            CSV 다운로드
+          </button>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th style="width:110px">차량번호</th>
+            <th style="width:100px">차종명</th>
+            <th style="width:80px">차량유형</th>
+            <th style="width:70px">운영형태</th>
+            <th style="width:90px">지역</th>
+            <th style="width:100px;text-align:right">왕복매출</th>
+            <th style="width:100px;text-align:right">편도매출</th>
+            <th style="width:110px;text-align:right">합계(VAT제외)</th>
+            <th style="width:80px">매출등급</th>
+          </tr></thead>
+          <tbody id="low-table"></tbody>
+        </table>
+      </div>
+      <p style="font-size:11px;color:var(--text3);margin-top:.5rem">* 최대 300대까지 표시 · CSV 다운로드는 전체 포함 · 운영형태: 조회 기간 내 편도 이력 있으면 혼용</p>
+    </div>
+  </div>
+</div>
+
+<script>
+let rawRound=[], rawOneway=[], filteredVehicles=[], allModeVehicles=[], distChart=null, bepMap={};
+let usageMode='all';
+
+function normalizeCarType(n){ return n ? String(n).replace(/^\[[^\]]+\]\s*/g,'').trim() : ''; }
+function isNotMyCard(v){ if(v===false)return true; if(v===true)return false; const s=String(v).trim().toLowerCase(); return s==='false'||s==='0'||s===''; }
+function parseDate(str){
+  if(str===null||str===undefined||str==='')return null;
+  if(str instanceof Date) return new Date(str.getFullYear(),str.getMonth(),str.getDate());
+  if(typeof str==='number'){ const d=XLSX.SSF.parse_date_code(str); return d?new Date(d.y,d.m-1,d.d):null; }
+  const s=String(str).trim().replace(/\./g,'-').replace(/\//g,'-').slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return null;
+  const [y,m,d]=s.split('-').map(Number); const dt=new Date(y,m-1,d);
+  return isNaN(dt.getTime())?null:dt;
+}
+function fmtDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function vatEx(v){ return v/1.1; }
+function markActive(sel){ sel.classList.toggle('active-filter', !!sel.value); }
+
+function parseBEP(data){
+  const wb=XLSX.read(data,{type:'array',cellDates:false});
+  const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+  bepMap={};
+  rows.forEach(row=>{ const n=normalizeCarType(String(row[0]||'').trim()); const b=parseFloat(String(row[1]||'').replace(/,/g,'').trim()); if(n&&!isNaN(b)&&b>0)bepMap[n]=b; });
+}
+function setupUploadZone(zoneId, inputId, onLoaded){
+  const zone=document.getElementById(zoneId);
+  const input=document.getElementById(inputId);
+  zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag')});
+  zone.addEventListener('dragleave',()=>zone.classList.remove('drag'));
+  zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('drag');handleUpload(e.dataTransfer.files[0],onLoaded,zoneId)});
+  input.addEventListener('change',e=>handleUpload(e.target.files[0],onLoaded,zoneId));
+}
+function handleUpload(file,onLoaded,zoneId){
+  if(!file)return;
+  const statusId = zoneId==='zone-round' ? 'status-round' : 'status-oneway';
+  document.getElementById(statusId).textContent='불러오는 중...';
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:false});
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
+      onLoaded(rows);
+      document.getElementById(statusId).textContent=`✓ ${file.name} (${rows.length.toLocaleString()}행)`;
+      maybeShowDashboard();
+    }catch(err){ document.getElementById(statusId).textContent='❌ 읽기 실패: '+err.message; }
+  };
+  reader.readAsArrayBuffer(file);
+}
+function maybeShowDashboard(){
+  if(rawRound.length || rawOneway.length){
+    document.getElementById('dashboard').style.display='block';
+    initFilters();
+    applyFilters();
+  }
+}
+setupUploadZone('zone-round','input-round', rows=>{ rawRound=rows; });
+setupUploadZone('zone-oneway','input-oneway', rows=>{ rawOneway=rows; });
+
+function setUsageMode(mode){ usageMode=mode; applyFilters(); }
+
+function initFilters(){
+  const roundDates=rawRound.map(r=>parseDate(r['예약시작일']!==undefined?r['예약시작일']:r['예약 시작일'])).filter(Boolean);
+  const onewayDates=rawOneway.map(r=>parseDate(r['운행시작일'])).filter(Boolean);
+  const allDates=[...roundDates,...onewayDates];
+  if(allDates.length){
+    document.getElementById('date-from').value=fmtDate(allDates.reduce((a,b)=>a<b?a:b));
+    document.getElementById('date-to').value=fmtDate(allDates.reduce((a,b)=>a>b?a:b));
+  }
+  populate('filter-region',[...rawRound.map(r=>r['지역(시/도)']), ...rawOneway.map(r=>r['소속 권역'])]);
+  populate('filter-type', rawRound.map(r=>normalizeCarType(r['차종명'])));
+  populate('filter-vtype', rawRound.map(r=>r['차량유형']));
+}
+function populate(id,values){
+  const sel=document.getElementById(id); while(sel.options.length>1)sel.remove(1);
+  [...new Set(values.filter(Boolean))].sort().forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+}
+function buildCarTypeMap(){
+  const map={};
+  rawRound.forEach(r=>{
+    const plate=(r['차량번호']||'').toString().trim();
+    if(plate && !map[plate]) map[plate]={ carType: normalizeCarType(r['차종명']), vtype: r['차량유형']||'' };
+  });
+  return map;
+}
+
+function getFilterContext(){
+  const fromVal=document.getElementById('date-from').value, toVal=document.getElementById('date-to').value;
+  const from=fromVal?parseDate(fromVal):null, to=toVal?parseDate(toVal):null;
+  if(to)to.setHours(23,59,59);
+  const region=document.getElementById('filter-region').value;
+  const carTypeFilter=document.getElementById('filter-type').value;
+  const vtypeFilter=document.getElementById('filter-vtype').value;
+  return {from,to,region,carTypeFilter,vtypeFilter};
+}
+
+function computeVehicles(mode){
+  const {from,to,region,carTypeFilter,vtypeFilter}=getFilterContext();
+  const carTypeMap=buildCarTypeMap();
+
+  const onewayFiltered = rawOneway.filter(r=>{
+    const d=parseDate(r['운행시작일']);
+    if(!d)return false;
+    if(from&&d<from)return false; if(to&&d>to)return false;
+    if(region && r['소속 권역']!==region) return false;
+    return true;
+  });
+  const onewayPlates = new Set(onewayFiltered.map(r=>(r['차량번호']||'').toString().trim()).filter(Boolean));
+
+  const roundFiltered = rawRound.filter(r=>{
+    if(!isNotMyCard(r['내카드주유']))return false;
+    const d=parseDate(r['예약시작일']!==undefined?r['예약시작일']:r['예약 시작일']);
+    if(!d)return false;
+    if(from&&d<from)return false; if(to&&d>to)return false;
+    if(region&&r['지역(시/도)']!==region)return false;
+    if(carTypeFilter&&normalizeCarType(r['차종명'])!==carTypeFilter)return false;
+    if(vtypeFilter&&r['차량유형']!==vtypeFilter)return false;
+    return true;
+  });
+
+  const vMap={};
+
+  roundFiltered.forEach(r=>{
+    const plate=(r['차량번호']||'').toString().trim(); if(!plate)return;
+    const isMix=onewayPlates.has(plate);
+    if(mode==='round' && isMix) return;
+    if(mode==='mix' && !isMix) return;
+    const raw=r['총청구요금'];
+    const amt=vatEx((raw===null||raw===undefined||raw==='')?0:parseFloat(raw.toString().replace(/,/g,''))||0);
+    if(!vMap[plate])vMap[plate]={plate,carType:normalizeCarType(r['차종명']),vtype:r['차량유형']||'',spot:r['스팟명']||'',region:r['지역(시/도)']||'',total:0,roundTotal:0,onewayTotal:0,cnt:0,isMix};
+    vMap[plate].total+=amt; vMap[plate].roundTotal+=amt; vMap[plate].cnt++;
+  });
+
+  if(mode==='all' || mode==='mix'){
+    onewayFiltered.forEach(r=>{
+      const plate=(r['차량번호']||'').toString().trim(); if(!plate)return;
+      const ctInfo = carTypeMap[plate] || {carType:'미확인(편도전용)', vtype:''};
+      if(carTypeFilter && ctInfo.carType !== carTypeFilter) return;
+      if(vtypeFilter && ctInfo.vtype !== vtypeFilter) return;
+
+      const raw=r['총결제요금'];
+      const amt=vatEx((raw===null||raw===undefined||raw==='')?0:parseFloat(raw.toString().replace(/,/g,''))||0);
+      if(!vMap[plate])vMap[plate]={plate,carType:ctInfo.carType,vtype:ctInfo.vtype,spot:r['출발스테이션']||'',region:r['소속 권역']||'',total:0,roundTotal:0,onewayTotal:0,cnt:0,isMix:true};
+      vMap[plate].total+=amt; vMap[plate].onewayTotal+=amt; vMap[plate].cnt++;
+      vMap[plate].isMix=true;
+    });
+  }
+
+  return Object.values(vMap).sort((a,b)=>a.total-b.total);
+}
+
+function applyFilters(){
+  filteredVehicles=computeVehicles(usageMode);
+  allModeVehicles=usageMode==='all'?filteredVehicles:computeVehicles('all');
+  updateThresholdLabel();
+  renderMetrics(); renderChart(); renderThreshold(); renderBEP(); renderVtype(); renderUsageBreakdown();
+}
+
+function renderUsageBreakdown(){
+  const box=document.getElementById('usage-breakdown');
+  if(!allModeVehicles.length){ box.style.display='none'; return; }
+  let roundSum=0, onewaySum=0;
+  const src = usageMode==='all' ? allModeVehicles : filteredVehicles;
+  src.forEach(v=>{ roundSum+=v.roundTotal||0; onewaySum+=v.onewayTotal||0; });
+  const total=roundSum+onewaySum;
+  if(total<=0){ box.style.display='none'; return; }
+  box.style.display='block';
+  const roundPct=Math.round(roundSum/total*100);
+  const onewayPct=100-roundPct;
+  document.getElementById('usage-bar').innerHTML=`<div style="width:${roundPct}%;background:#378ADD"></div><div style="width:${onewayPct}%;background:#D4537E"></div>`;
+  document.getElementById('usage-bar-labels').innerHTML=`<span>왕복매출 ${Math.round(roundSum).toLocaleString()}원 (${roundPct}%)</span><span>편도매출 ${Math.round(onewaySum).toLocaleString()}원 (${onewayPct}%)</span>`;
+}
+
+function getPctValue(pct){
+  if(!filteredVehicles.length)return 0;
+  const sorted=[...filteredVehicles].sort((a,b)=>a.total-b.total);
+  return sorted[Math.max(0,Math.ceil(sorted.length*pct/100)-1)].total;
+}
+function updateThresholdLabel(){
+  const pct=parseInt(document.getElementById('threshold-pct').value)||20;
+  const threshold=getPctValue(pct);
+  document.getElementById('threshold-label').textContent=`하위 ${pct}% (${Math.round(threshold/10000).toLocaleString()}만원 이하)`;
+}
+function onThresholdChange(){
+  updateThresholdLabel();
+  if(filteredVehicles.length){ renderMetrics(); renderChart(); renderThreshold(); }
+}
+
+function renderMetrics(){
+  const totals=filteredVehicles.map(v=>v.total); if(!totals.length){
+    document.getElementById('m-total').textContent='0';
+    document.getElementById('m-avg').textContent='—';
+    document.getElementById('m-low').textContent='0';
+    return;
+  }
+  const sum=totals.reduce((a,b)=>a+b,0);
+  const pct=parseInt(document.getElementById('threshold-pct').value)||20;
+  document.getElementById('m-total').textContent=filteredVehicles.length.toLocaleString();
+  document.getElementById('m-avg').textContent=Math.round(sum/filteredVehicles.length).toLocaleString();
+  document.getElementById('m-low').textContent=filteredVehicles.filter(v=>v.total<=getPctValue(pct)).length.toLocaleString();
+
+  if(Object.keys(bepMap).length && allModeVehicles.length){
+    const allCtMap={};
+    allModeVehicles.forEach(v=>{ const ct=v.carType||'미분류'; if(!allCtMap[ct])allCtMap[ct]={total:0,cnt:0}; allCtMap[ct].total+=v.total; allCtMap[ct].cnt++; });
+    let wBEP=0, tCntBEP=0;
+    Object.entries(allCtMap).forEach(([ct,v])=>{ if(bepMap[ct]!==undefined){ wBEP+=bepMap[ct]*v.cnt; tCntBEP+=v.cnt; } });
+
+    const curCtMap={};
+    filteredVehicles.forEach(v=>{ const ct=v.carType||'미분류'; if(!curCtMap[ct])curCtMap[ct]={total:0,cnt:0}; curCtMap[ct].total+=v.total; curCtMap[ct].cnt++; });
+    let wAvg=0, tCntAvg=0;
+    Object.entries(curCtMap).forEach(([ct,v])=>{ if(bepMap[ct]!==undefined){ wAvg+=(v.total/v.cnt)*v.cnt; tCntAvg+=v.cnt; } });
+
+    if(tCntBEP>0 && tCntAvg>0){
+      const avgBEP=wBEP/tCntBEP, avgRev=wAvg/tCntAvg;
+      const rate=Math.round(avgRev/avgBEP*100);
+      document.getElementById('m-bep').textContent=Math.round(avgBEP).toLocaleString();
+      const re=document.getElementById('m-bep-rate'); re.textContent=rate+'%'; re.style.color=rate>=100?'var(--success-text)':'var(--danger)';
+    } else {
+      document.getElementById('m-bep').textContent='—'; document.getElementById('m-bep-rate').textContent='—';
+    }
+  } else {
+    document.getElementById('m-bep').textContent='—';
+    document.getElementById('m-bep-rate').textContent='—';
+  }
+}
+
+function renderChart(){
+  const totals=filteredVehicles.map(v=>v.total);
+  if(!totals.length){ if(distChart)distChart.destroy(); return; }
+  const max=Math.max(...totals); const binCount=25; const binSize=max/binCount||1;
+  const bins=Array(binCount).fill(0);
+  totals.forEach(t=>{ bins[Math.min(Math.floor(t/binSize),binCount-1)]++; });
+  const labels=bins.map((_,i)=>Math.round(i*binSize/10000)+'만');
+  const pct=parseInt(document.getElementById('threshold-pct').value)||20;
+  const threshold=getPctValue(pct);
+  const colors=bins.map((_,i)=>((i+.5)*binSize)<=threshold?'#E24B4A':'#378ADD');
+  if(distChart)distChart.destroy();
+  distChart=new Chart(document.getElementById('distChart'),{
+    type:'bar',
+    data:{labels,datasets:[{label:'차량 수',data:bins,backgroundColor:colors,borderWidth:0,borderRadius:3}]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{
+        const midVal=(ctx.dataIndex+.5)*binSize;
+        return [`차량 ${ctx.raw}대`,`구간 대당매출 약 ${Math.round(midVal).toLocaleString()}원`];
+      }}}},
+      scales:{
+        x:{grid:{display:false},ticks:{font:{size:11},color:'#888780',autoSkip:true,maxTicksLimit:12}},
+        y:{grid:{color:'rgba(136,135,128,0.12)'},ticks:{font:{size:11},color:'#888780'},title:{display:true,text:'차량 수',font:{size:11},color:'#888780'}}
+      }
+    }
+  });
+}
+
+function renderThreshold(){
+  if(!filteredVehicles.length){
+    document.getElementById('low-table').innerHTML='<tr class="empty-row"><td colspan="9">데이터 없음</td></tr>';
+    document.getElementById('low-count-label').textContent='';
+    return;
+  }
+  const pct=parseInt(document.getElementById('threshold-pct').value)||20;
+  const threshold=getPctValue(pct);
+  const lowVehicles=filteredVehicles.filter(v=>v.total<=threshold);
+  document.getElementById('m-low').textContent=lowVehicles.length.toLocaleString();
+  document.getElementById('low-count-label').textContent=`총 ${lowVehicles.length}대 추출`;
+  const p30=getPctValue(30); const tbody=document.getElementById('low-table');
+  if(!lowVehicles.length){tbody.innerHTML='<tr class="empty-row"><td colspan="9">해당 차량 없음</td></tr>';renderChart();return;}
+  tbody.innerHTML=lowVehicles.slice(0,300).map(v=>{
+    const grade=v.total<threshold*.5?'<span class="badge low">매우 저조</span>':v.total<p30*.7?'<span class="badge mid">저조</span>':'<span class="badge high">보통</span>';
+    const mixBadge=v.isMix?'<span class="badge mix">혼용</span>':'<span style="color:var(--text3);font-size:12px">왕복전용</span>';
+    return `<tr><td><strong>${v.plate}</strong></td><td>${v.carType}</td><td>${v.vtype}</td><td>${mixBadge}</td><td>${v.region}</td><td class="num">${Math.round(v.roundTotal||0).toLocaleString()}</td><td class="num">${Math.round(v.onewayTotal||0).toLocaleString()}</td><td class="num"><strong>${Math.round(v.total).toLocaleString()}</strong></td><td>${grade}</td></tr>`;
+  }).join('');
+  renderChart();
+  renderCartypeChart(lowVehicles,filteredVehicles);
+}
+
+let _cartypeTab='low',_lastLow=[],_lastAll=[];
+
+function setCartypeTab(tab){
+  _cartypeTab=tab;
+  document.getElementById('tab-all').style.cssText=`background:${tab==='all'?'var(--accent)':'var(--surface)'};color:${tab==='all'?'#fff':'var(--text2)'}`;
+  document.getElementById('tab-low').style.cssText=`background:${tab==='low'?'var(--accent)':'var(--surface)'};color:${tab==='low'?'#fff':'var(--text2)'}`;
+  renderCartypeChart(_lastLow,_lastAll);
+}
+
+function renderCartypeChart(lowVehicles,allVehicles){
+  _lastLow=lowVehicles; _lastAll=allVehicles;
+  const selectedCt='더 뉴 아반떼 (CN7)';
+  const tbody=document.getElementById('cartype-table-body');
+  const moreWrap=document.getElementById('cartype-more-wrap');
+  if(!allVehicles.length){ tbody.innerHTML=''; moreWrap.style.display='none'; return; }
+
+  const srcVehicles = _cartypeTab==='low' ? lowVehicles : allVehicles;
+  document.getElementById('cartype-subtitle').textContent = _cartypeTab==='low' ? `저매출 ${lowVehicles.length}대 기준` : `전체 ${allVehicles.length}대 기준`;
+
+  const ctMap={};
+  srcVehicles.forEach(v=>{
+    const ct=v.carType||'미분류';
+    if(!ctMap[ct])ctMap[ct]={cnt:0,round:0,oneway:0,total:0};
+    ctMap[ct].cnt++; ctMap[ct].round+=v.roundTotal||0; ctMap[ct].oneway+=v.onewayTotal||0; ctMap[ct].total+=v.total;
+  });
+
+  const minV = parseInt(document.getElementById('cartype-min-vehicle')?.value)||0;
+  let entries=Object.entries(ctMap).filter(e=>e[1].cnt>minV);
+  entries = entries.sort((a,b)=>(a[1].total/a[1].cnt)-(b[1].total/b[1].cnt));
+  const SHOW=10;
+  const visible=entries.slice(0,SHOW);
+  const hidden=entries.slice(SHOW);
+
+  // CSV 다운로드용 데이터 저장
+  const grandTotal = entries.reduce((s,[,d])=>s+d.total, 0);
+  window._cartypeDownloadData = entries.map(([name,d])=>({
+    name, cnt:d.cnt,
+    round: d.cnt>0?Math.round(d.round/d.cnt):0,
+    oneway: d.cnt>0?Math.round(d.oneway/d.cnt):0,
+    total: d.cnt>0?Math.round(d.total/d.cnt):0,
+    grandTotal: Math.round(d.total),
+    pct: grandTotal>0?Math.round(d.total/grandTotal*1000)/10:0
+  }));
+
+  const renderRow=(e)=>{
+    const [name,d]=e;
+    const hl = name==='더 뉴 아반떼 (CN7)';
+    const avgRound=d.cnt>0?Math.round(d.round/d.cnt):0;
+    const avgOneway=d.cnt>0?Math.round(d.oneway/d.cnt):0;
+    const avgTotal=d.cnt>0?Math.round(d.total/d.cnt):0;
+    const pct=grandTotal>0?(d.total/grandTotal*100):0;
+    return `<tr style="${hl?'background:var(--warn-bg)':''}">
+      <td><strong style="${hl?'font-weight:700':''}"}>${name}</strong></td>
+      <td class="num">${d.cnt}대</td>
+      <td class="num">${avgRound.toLocaleString()}원</td>
+      <td class="num">${avgOneway.toLocaleString()}원</td>
+      <td class="num"><strong>${avgTotal.toLocaleString()}원</strong></td>
+      <td class="num" style="color:var(--text2)">${Math.round(d.total).toLocaleString()}원</td>
+      <td class="num"><span style="font-size:12px;font-weight:600;color:${pct>=10?'var(--accent)':'var(--text3)'}">${pct.toFixed(1)}%</span></td>
+    </tr>`;
+  };
+
+  // hidden rows를 개별 tr로 삽입
+  if(hidden.length>0){
+    const hiddenHtml = hidden.map(e=>renderRow(e).replace('<tr','<tr class="ct-more-row" style="display:none"')).join('');
+    tbody.innerHTML = visible.map(e=>renderRow(e)).join('') + hiddenHtml;
+    moreWrap.style.display='block';
+    document.getElementById('cartype-more-btn').textContent=`더보기 (${hidden.length}개)`;
+    document.getElementById('cartype-more-btn').dataset.open='false';
+  } else {
+    moreWrap.style.display='none';
+  }
+}
+
+function downloadCartypeCSV(){
+  const data=window._cartypeDownloadData;
+  if(!data||!data.length)return;
+  const header='차종명,차량수,왕복매출(대당),편도매출(대당),합계매출(대당),총매출,매출비중(%)\n';
+  const body=data.map(d=>`${d.name},${d.cnt},${d.round},${d.oneway},${d.total},${d.grandTotal},${d.pct}`).join('\n');
+  const blob=new Blob(['\uFEFF'+header+body],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=`차종분포_${_cartypeTab==='low'?'저매출':'전체'}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+function toggleCartypeMore(){
+  const btn=document.getElementById('cartype-more-btn');
+  const open=btn.dataset.open==='true';
+  document.querySelectorAll('.ct-more-row').forEach(tr=>{ tr.style.display=open?'none':''; });
+  btn.dataset.open=open?'false':'true';
+  const hiddenCount=document.querySelectorAll('.ct-more-row').length;
+  btn.textContent=open?`더보기 (${hiddenCount}개)`:'접기';
+}
+
+function renderBEP(){
+  const el=document.getElementById('bep-content');
+  el.style.textAlign='left'; el.style.padding='0';
+  const selectedCt='더 뉴 아반떼 (CN7)';
+  if(!Object.keys(bepMap).length){ el.style.textAlign='center'; el.style.padding='1rem'; el.innerHTML='<p style="color:var(--text3);font-size:13px">상단의 <strong>BEP 파일 선택</strong> 버튼으로 BEP 파일을 불러와주세요.</p>'; return; }
+  if(!filteredVehicles.length){ el.style.textAlign='center'; el.style.padding='1rem'; el.innerHTML='<p style="color:var(--text3);font-size:13px">데이터가 없어요.</p>'; return; }
+  const ctMap={};
+  filteredVehicles.forEach(v=>{
+    const ct=v.carType||'미분류';
+    if(!ctMap[ct])ctMap[ct]={cnt:0,round:0,oneway:0,total:0};
+    ctMap[ct].cnt++; ctMap[ct].round+=v.roundTotal||0; ctMap[ct].oneway+=v.onewayTotal||0; ctMap[ct].total+=v.total;
+  });
+  const matched=[],unmatched=[];
+  Object.entries(ctMap).forEach(([ct,d])=>{
+    if(bepMap[ct]!==undefined){
+      const avgTotal=d.total/d.cnt, avgRound=d.round/d.cnt, avgOneway=d.oneway/d.cnt;
+      matched.push({ct,avgTotal,avgRound,avgOneway,bep:bepMap[ct],rate:avgTotal/bepMap[ct]*100,vCnt:d.cnt});
+    } else unmatched.push(ct);
+  });
+  if(!matched.length){ el.style.textAlign='center'; el.style.padding='1rem'; el.innerHTML='<p style="color:var(--text3);font-size:13px">매칭된 차종이 없어요.</p>'; return; }
+  matched.sort((a,b)=>a.rate-b.rate);
+  const overCount=matched.filter(i=>Math.round(i.rate)>=100).length, underCount=matched.length-overCount;
+
+  const renderRows=(filter,minV)=>{
+    let list=filter==='all'?matched
+      :filter==='over'?matched.filter(i=>Math.round(i.rate)>=100)
+      :matched.filter(i=>Math.round(i.rate)<100);
+    list=list.filter(i=>i.vCnt>=minV);
+    if(!list.length)return '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:1.5rem">해당 항목 없음</td></tr>';
+    return list.map(item=>{
+      const rate=Math.round(item.rate), isOver=rate>=100;
+      const barW=Math.min(rate,150);
+      const roundShare = item.avgTotal>0 ? item.avgRound/item.avgTotal : 0;
+      const onewayShare = item.avgTotal>0 ? item.avgOneway/item.avgTotal : 0;
+      const roundW = barW*roundShare;
+      const onewayW = barW*onewayShare;
+      const hl=selectedCt && item.ct===selectedCt;
+      return `<tr class="${hl?'row-highlight':''}">
+        <td><strong>${item.ct}</strong></td>
+        <td class="num">${item.vCnt}대</td>
+        <td style="min-width:130px">
+          <div class="bar-bg" style="height:8px">
+            <div style="width:${roundW}%;background:#378ADD;height:100%"></div>
+            <div style="width:${onewayW}%;background:#D4537E;height:100%"></div>
+          </div>
+        </td>
+        <td class="num">${Math.round(item.avgRound).toLocaleString()}원</td>
+        <td class="num">${Math.round(item.avgOneway).toLocaleString()}원</td>
+        <td class="num"><strong>${Math.round(item.avgTotal).toLocaleString()}원</strong></td>
+        <td class="num" style="color:var(--text3)">${Math.round(item.bep).toLocaleString()}원</td>
+        <td style="text-align:right">${isOver?`<span class="bep-status over">✓ ${rate}%</span>`:`<span class="bep-status under">✗ ${rate}%</span>`}</td>
+      </tr>`;
+    }).join('');
+  };
+
+  el.innerHTML=`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:1rem;flex-wrap:wrap">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button onclick="setBEPFilter('all')" id="bep-tab-all" style="font-size:13px;padding:5px 12px;border-radius:var(--radius-sm);border:.5px solid var(--border2);cursor:pointer;background:var(--accent);color:#fff">전체 ${matched.length}</button>
+        <button onclick="setBEPFilter('over')" id="bep-tab-over" style="font-size:13px;padding:5px 12px;border-radius:var(--radius-sm);border:.5px solid var(--border2);cursor:pointer;background:var(--surface);color:var(--success-text)">✓ 달성 ${overCount}</button>
+        <button onclick="setBEPFilter('under')" id="bep-tab-under" style="font-size:13px;padding:5px 12px;border-radius:var(--radius-sm);border:.5px solid var(--border2);cursor:pointer;background:var(--surface);color:var(--danger)">✗ 미달성 ${underCount}</button>
+        ${unmatched.length>0?`<button onclick="setBEPFilter('unmatched')" id="bep-tab-unmatched" style="font-size:13px;padding:5px 12px;border-radius:var(--radius-sm);border:.5px solid var(--border2);cursor:pointer;background:var(--surface);color:var(--warn-text)">기타(BEP미등록) ${unmatched.length}</button>`:''}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+        <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3)"><span style="width:8px;height:8px;border-radius:2px;background:#378ADD;display:inline-block"></span>왕복</span>
+        <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3)"><span style="width:8px;height:8px;border-radius:2px;background:#D4537E;display:inline-block"></span>편도</span>
+        <div class="filter-sep" style="height:16px"></div>
+        <label style="font-size:12px;color:var(--text3)">최소 차량 수</label>
+        <input type="number" id="bep-min-vehicle" value="5" min="1" style="width:60px;font-size:13px;padding:4px 8px;border-radius:var(--radius-sm);border:.5px solid var(--border2);background:var(--surface2);color:var(--text);text-align:center" oninput="setBEPFilter(window._bepCurrentFilter||'all')">
+        <span style="font-size:12px;color:var(--text3)">대 이상</span>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th style="width:160px">차종명</th>
+          <th style="width:60px;text-align:right">차량수</th>
+          <th style="width:130px">달성도</th>
+          <th style="text-align:right">왕복(대당)</th>
+          <th style="text-align:right">편도(대당)</th>
+          <th style="text-align:right">합계(대당)</th>
+          <th style="text-align:right">BEP</th>
+          <th style="width:80px;text-align:right">달성률</th>
+        </tr></thead>
+        <tbody id="bep-table-body">${renderRows('all',5)}</tbody>
+      </table>
+    </div>
+    <p style="font-size:11px;color:var(--text3);margin-top:1rem">* 모든 매출은 VAT 제외 · BEP는 월 기준(VAT 제외) · 달성률은 합계매출 ÷ BEP 기준</p>`;
+
+  window._bepCurrentFilter='all'; window._renderRows=renderRows; window._bepUnmatched=unmatched;
+  window.setBEPFilter=(filter)=>{
+    window._bepCurrentFilter=filter;
+    const minV=parseInt(document.getElementById('bep-min-vehicle')?.value)||1;
+    ['all','over','under','unmatched'].forEach(t=>{ const b=document.getElementById(`bep-tab-${t}`); if(!b)return;
+      b.style.background=t===filter?'var(--accent)':'var(--surface)';
+      b.style.color=t===filter?'#fff':t==='over'?'var(--success-text)':t==='under'?'var(--danger)':'var(--warn-text)';
+    });
+    const tbody=document.getElementById('bep-table-body');
+    tbody.innerHTML=filter==='unmatched'
+      ?(window._bepUnmatched.length?window._bepUnmatched.sort().map(ct=>`<tr><td colspan="7" style="color:var(--text2)">${ct}</td></tr>`).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:1.5rem">없음</td></tr>')
+      :window._renderRows(filter,minV);
+  };
+}
+
+function renderVtype(){
+  const el=document.getElementById('vtype-content');
+  const selectedVt='준중형';
+  if(!filteredVehicles.length){ el.innerHTML='<p style="color:var(--text3);font-size:13px;text-align:center;padding:1rem">데이터가 없어요.</p>'; return; }
+
+  const BASE_ORDER=['경형','소형','준중형','중형','준대형','대형','수입','전기','승합'];
+  function vtypeOrder(vt){
+    const base=BASE_ORDER.findIndex(b=>vt.startsWith(b));
+    if(base===-1)return 999;
+    const sub=vt.includes('SUV')&&vt.includes('HEV')?3:vt.includes('HEV')?2:vt.includes('SUV')?1:0;
+    return base*10+sub;
+  }
+
+  const vtMap={};
+  filteredVehicles.forEach(v=>{
+    const vt=v.vtype||'미분류';
+    if(!vtMap[vt])vtMap[vt]={total:0,round:0,oneway:0,cnt:0};
+    vtMap[vt].total+=v.total; vtMap[vt].round+=v.roundTotal||0; vtMap[vt].oneway+=v.onewayTotal||0; vtMap[vt].cnt++;
+  });
+  const vtGrandTotal = Object.values(vtMap).reduce((s,v)=>s+v.total, 0);
+  const items=Object.entries(vtMap).map(([vt,v])=>{
+    const avg=v.total/v.cnt, avgRound=v.round/v.cnt, avgOneway=v.oneway/v.cnt;
+    let wBEP=0,bepCnt=0;
+    filteredVehicles.filter(fv=>fv.vtype===vt).forEach(fv=>{ if(bepMap[fv.carType]!==undefined){wBEP+=bepMap[fv.carType];bepCnt++;} });
+    const avgBEP=bepCnt>0?wBEP/bepCnt:null;
+    const rate=avgBEP!=null?avg/avgBEP*100:null;
+    const isOver=rate!=null&&Math.round(rate)>=100;
+    const pct=vtGrandTotal>0?v.total/vtGrandTotal*100:0;
+    return {vt,avg,avgRound,avgOneway,cnt:v.cnt,vtTotal:v.total,pct,avgBEP,rate,isOver};
+  }).sort((a,b)=>vtypeOrder(a.vt)-vtypeOrder(b.vt));
+
+  const hasBEP=Object.keys(bepMap).length>0;
+  const maxAvg=Math.max(...items.map(i=>i.avg));
+
+  el.innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:.85rem;flex-wrap:wrap">
+      <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3)"><span style="width:8px;height:8px;border-radius:2px;background:#378ADD;display:inline-block"></span>왕복</span>
+      <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3)"><span style="width:8px;height:8px;border-radius:2px;background:#D4537E;display:inline-block"></span>편도</span>
+      <span style="font-size:11px;color:var(--text3)">· 게이지 길이 = 달성률(%)</span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th style="width:130px">차량유형</th>
+          <th style="width:60px;text-align:right">차량수</th>
+          <th style="width:130px">달성률 게이지</th>
+          <th style="text-align:right">왕복(대당)</th>
+          <th style="text-align:right">편도(대당)</th>
+          <th style="text-align:right">합계(대당)</th>
+          ${hasBEP?'<th style="text-align:right">가중평균 BEP</th><th style="width:80px;text-align:right">달성률</th>':''}
+          <th style="text-align:right">총매출(VAT제외)</th>
+          <th style="width:70px;text-align:right">매출비중</th>
+        </tr></thead>
+        <tbody>
+          ${items.map(item=>{
+            const hl=selectedVt && item.vt===selectedVt;
+            // 달성률 기준 게이지 (BEP 없으면 대당매출 기준으로 폴백)
+            const barW = item.rate!=null ? Math.min(Math.round(item.rate), 150) : Math.round(item.avg/maxAvg*100);
+            const roundShare = item.avg>0 ? item.avgRound/item.avg : 0;
+            const onewayShare = item.avg>0 ? item.avgOneway/item.avg : 0;
+            const roundW = barW*roundShare;
+            const onewayW = barW*onewayShare;
+            const bepCols=hasBEP?`
+              <td class="num" style="color:var(--text3)">${item.avgBEP!=null?Math.round(item.avgBEP).toLocaleString()+'원':'—'}</td>
+              <td style="text-align:right">${item.rate!=null
+                ?(item.isOver?`<span class="bep-status over">✓ ${Math.round(item.rate)}%</span>`:`<span class="bep-status under">✗ ${Math.round(item.rate)}%</span>`)
+                :'<span style="font-size:12px;color:var(--text3)">—</span>'
+              }</td>`:'';
+            return `<tr style="${hl?'background:var(--warn-bg)':''}">
+              <td><strong>${item.vt}</strong></td>
+              <td class="num">${item.cnt}대</td>
+              <td style="min-width:130px"><div class="bar-bg" style="height:8px">
+                <div style="width:${roundW}%;background:#378ADD;height:100%"></div>
+                <div style="width:${onewayW}%;background:#D4537E;height:100%"></div>
+              </div></td>
+              <td class="num">${Math.round(item.avgRound).toLocaleString()}원</td>
+              <td class="num">${Math.round(item.avgOneway).toLocaleString()}원</td>
+              <td class="num"><strong>${Math.round(item.avg).toLocaleString()}원</strong></td>
+              ${bepCols}
+              <td class="num" style="color:var(--text2)">${Math.round(item.vtTotal).toLocaleString()}원</td>
+              <td class="num"><span style="font-size:12px;font-weight:600;color:${item.pct>=10?'var(--accent)':'var(--text3)'}">${item.pct.toFixed(1)}%</span></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:11px;color:var(--text3);margin-top:1rem">* 차량유형별 BEP = 해당 유형 내 차종별 BEP 단순평균 · VAT 제외</p>`;
+}
+
+function downloadCSV(){
+  if(!filteredVehicles.length)return;
+  const pct=parseInt(document.getElementById('threshold-pct').value)||20;
+  const threshold=getPctValue(pct);
+  const rows=filteredVehicles.filter(v=>v.total<=threshold);
+  const header='차량번호,차종명,차량유형,운영형태,지역,왕복매출,편도매출,합계매출(VAT제외)\n';
+  const body=rows.map(v=>`${v.plate},${v.carType},${v.vtype},${v.isMix?'혼용':'왕복전용'},${v.region},${Math.round(v.roundTotal||0)},${Math.round(v.onewayTotal||0)},${Math.round(v.total)}`).join('\n');
+  const blob=new Blob(['\uFEFF'+header+body],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`저매출차량_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+}
+
+async function loadBEP(){
+  const el=document.getElementById('bep-status');
+  try{
+    const res=await fetch('bep.xlsx');
+    if(!res.ok)throw new Error();
+    const buf=await res.arrayBuffer();
+    parseBEP(new Uint8Array(buf));
+    const cnt=Object.keys(bepMap).length;
+    el.textContent=`✓ BEP ${cnt}개 차종`; el.style.color='var(--success-text)';
+    const ls=document.getElementById('bep-load-status'); if(ls)ls.textContent=`${cnt}개 차종 로드됨`;
+  }catch(e){
+    el.textContent='⚠ BEP 로드 실패'; el.style.color='var(--warn-text)';
+    const ls=document.getElementById('bep-load-status'); if(ls)ls.textContent='bep.xlsx 없음';
+  }
+}
+loadBEP();
+</script>
+</body>
+</html>
