@@ -257,7 +257,12 @@ function isNotMyCard(v){ if(v===false)return true; if(v===true)return false; con
 function parseDatetime(str){
   if(str===null||str===undefined||str==='')return null;
   if(str instanceof Date) return str;
-  if(typeof str==='number'){ const d=XLSX.SSF.parse_date_code(str,{date1904:false}); return d?new Date(d.y,d.m-1,d.d,d.H||0,d.M||0,d.S||0):null; }
+  if(typeof str==='number'){
+    // XLSX serial number → Date (시간 포함)
+    const ms=(str-25569)*86400000; // 1970-01-01 기준 변환
+    const d=new Date(ms);
+    return isNaN(d.getTime())?null:d;
+  }
   const s=String(str).trim().replace(/\//g,'-').replace(/\./g,'-');
   const dt=new Date(s); return isNaN(dt.getTime())?null:dt;
 }
@@ -384,11 +389,11 @@ function computeVehicles(mode){
     if(mode==='mix' && !isMix) return;
     const raw=r['총청구요금'];
     const amt=vatEx((raw===null||raw===undefined||raw==='')?0:parseFloat(raw.toString().replace(/,/g,''))||0);
-    // 운행시간 계산 (예약종료일 - 예약시작일, 시간 단위)
-    const startD=parseDatetime(r['예약시작일']!==undefined?r['예약시작일']:r['예약 시작일']);
+    // 운행시간 계산: '예약 시작일'(시간포함) ~ '예약 종료일' 기준
+    const startD=parseDatetime(r['예약 시작일']!==undefined?r['예약 시작일']:r['예약시작일']);
     const endD=parseDatetime(r['예약 종료일']!==undefined?r['예약 종료일']:r['예약종료일']);
     const opHrs=(startD&&endD)?(endD-startD)/3600000:0;
-    if(!vMap[plate])vMap[plate]={plate,carType:normalizeCarType(r['차종명']),vtype:r['차량유형']||'',spot:r['스팟명']||'',region:r['지역(시/도)']||'',total:0,roundTotal:0,onewayTotal:0,cnt:0,isMix,opHours:0};
+    if(!vMap[plate])vMap[plate]={plate,carType:normalizeCarType(r['차종명']),vtype:r['차량유형']||'',spot:r['스팟명']||'',region:r['지역(시/도)']||'',total:0,roundTotal:0,onewayTotal:0,cnt:0,isMix,opHours:0,owHours:0};
     vMap[plate].total+=amt; vMap[plate].roundTotal+=amt; vMap[plate].cnt++;
     vMap[plate].opHours+=(opHrs>0?opHrs:0);
   });
@@ -402,9 +407,13 @@ function computeVehicles(mode){
 
       const raw=r['총결제요금'];
       const amt=vatEx((raw===null||raw===undefined||raw==='')?0:parseFloat(raw.toString().replace(/,/g,''))||0);
-      if(!vMap[plate])vMap[plate]={plate,carType:ctInfo.carType,vtype:ctInfo.vtype,spot:r['출발스테이션']||'',region:r['소속 권역']||'',total:0,roundTotal:0,onewayTotal:0,cnt:0,isMix:true};
+      const owStart=parseDatetime(r['운행시작일']);
+      const owEnd=parseDatetime(r['운행종료일']);
+      const owHrs=(owStart&&owEnd)?(owEnd-owStart)/3600000:0;
+      if(!vMap[plate])vMap[plate]={plate,carType:ctInfo.carType,vtype:ctInfo.vtype,spot:r['출발스테이션']||'',region:r['소속 권역']||'',total:0,roundTotal:0,onewayTotal:0,cnt:0,isMix:true,opHours:0,owHours:0};
       vMap[plate].total+=amt; vMap[plate].onewayTotal+=amt; vMap[plate].cnt++;
       vMap[plate].isMix=true;
+      vMap[plate].owHours+=(owHrs>0?owHrs:0);
     });
   }
 
@@ -640,18 +649,20 @@ function renderBEP(){
   const ctMap={};
   filteredVehicles.forEach(v=>{
     const ct=v.carType||'미분류';
-    if(!ctMap[ct])ctMap[ct]={cnt:0,round:0,oneway:0,total:0,opHours:0};
-    ctMap[ct].cnt++; ctMap[ct].round+=v.roundTotal||0; ctMap[ct].oneway+=v.onewayTotal||0; ctMap[ct].total+=v.total; ctMap[ct].opHours+=v.opHours||0;
+    if(!ctMap[ct])ctMap[ct]={cnt:0,round:0,oneway:0,total:0,opHours:0,owHours:0};
+    ctMap[ct].cnt++; ctMap[ct].round+=v.roundTotal||0; ctMap[ct].oneway+=v.onewayTotal||0; ctMap[ct].total+=v.total;
+    ctMap[ct].opHours+=v.opHours||0; ctMap[ct].owHours+=v.owHours||0;
   });
-  // 조회기간 일자수 계산
   const fromVal=document.getElementById('date-from').value, toVal=document.getElementById('date-to').value;
   const periodDays = (fromVal&&toVal) ? Math.round((new Date(toVal)-new Date(fromVal))/86400000)+1 : 30;
   const matched=[],unmatched=[];
   Object.entries(ctMap).forEach(([ct,d])=>{
     if(bepMap[ct]!==undefined){
       const avgTotal=d.total/d.cnt, avgRound=d.round/d.cnt, avgOneway=d.oneway/d.cnt;
-      const utilRate = d.cnt>0&&periodDays>0 ? d.opHours/(d.cnt*periodDays*24)*100 : null;
-      matched.push({ct,avgTotal,avgRound,avgOneway,bep:bepMap[ct],rate:avgTotal/bepMap[ct]*100,vCnt:d.cnt,utilRate});
+      const utilRound = d.cnt>0&&periodDays>0 ? d.opHours/(d.cnt*periodDays*24)*100 : null;
+      const utilOneway = d.cnt>0&&periodDays>0 ? d.owHours/(d.cnt*periodDays*24)*100 : null;
+      const utilTotal = (utilRound!=null||utilOneway!=null) ? (utilRound||0)+(utilOneway||0) : null;
+      matched.push({ct,avgTotal,avgRound,avgOneway,bep:bepMap[ct],rate:avgTotal/bepMap[ct]*100,vCnt:d.cnt,utilRound,utilOneway,utilTotal});
     } else unmatched.push(ct);
   });
   if(!matched.length){ el.style.textAlign='center'; el.style.padding='1rem'; el.innerHTML='<p style="color:var(--text3);font-size:13px">매칭된 차종이 없어요.</p>'; return; }
@@ -663,7 +674,7 @@ function renderBEP(){
       :filter==='over'?matched.filter(i=>Math.round(i.rate)>=100)
       :matched.filter(i=>Math.round(i.rate)<100);
     list=list.filter(i=>i.vCnt>=minV);
-    if(!list.length)return '<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:1.5rem">해당 항목 없음</td></tr>';
+    if(!list.length)return '<tr><td colspan="11" style="text-align:center;color:var(--text3);padding:1.5rem">해당 항목 없음</td></tr>';
     return list.map(item=>{
       const rate=Math.round(item.rate), isOver=rate>=100;
       const barW=Math.min(rate,150);
@@ -672,9 +683,9 @@ function renderBEP(){
       const roundW = barW*roundShare;
       const onewayW = barW*onewayShare;
       const hl=selectedCt && item.ct===selectedCt;
-      const utilStr = item.utilRate!=null ? `${item.utilRate.toFixed(1)}%` : '—';
-      const utilColor = item.utilRate!=null ? (item.utilRate>=50?'var(--success-text)':item.utilRate>=30?'var(--warn-text)':'var(--danger)') : 'var(--text3)';
-      return `<tr class="${hl?'row-highlight':''}">
+      const fmtUtil=(v)=>v!=null?`${v.toFixed(1)}%`:'—';
+      const utilColor=(v)=>v!=null?(v>=50?'var(--success-text)':v>=30?'var(--warn-text)':'var(--danger)'):'var(--text3)';
+      return `<tr style="${hl?'background:var(--warn-bg)':''}">
         <td><strong>${item.ct}</strong></td>
         <td class="num">${item.vCnt}대</td>
         <td style="min-width:130px">
@@ -688,7 +699,9 @@ function renderBEP(){
         <td class="num"><strong>${Math.round(item.avgTotal).toLocaleString()}원</strong></td>
         <td class="num" style="color:var(--text3)">${Math.round(item.bep).toLocaleString()}원</td>
         <td style="text-align:right">${isOver?`<span class="bep-status over">✓ ${rate}%</span>`:`<span class="bep-status under">✗ ${rate}%</span>`}</td>
-        <td class="num" style="color:${utilColor};font-weight:500">${utilStr}</td>
+        <td class="num" style="color:${utilColor(item.utilRound)};font-weight:500">${fmtUtil(item.utilRound)}</td>
+        <td class="num" style="color:${utilColor(item.utilOneway)};font-weight:500">${fmtUtil(item.utilOneway)}</td>
+        <td class="num" style="color:${utilColor(item.utilTotal)};font-weight:500">${fmtUtil(item.utilTotal)}</td>
       </tr>`;
     }).join('');
   };
@@ -721,12 +734,14 @@ function renderBEP(){
           <th style="text-align:right">합계(대당)</th>
           <th style="text-align:right">BEP</th>
           <th style="width:80px;text-align:right">달성률</th>
-          <th style="width:80px;text-align:right">가동률</th>
+          <th style="width:70px;text-align:right">왕복가동률</th>
+          <th style="width:70px;text-align:right">편도가동률</th>
+          <th style="width:70px;text-align:right">합계가동률</th>
         </tr></thead>
         <tbody id="bep-table-body">${renderRows('all',5)}</tbody>
       </table>
     </div>
-    <p style="font-size:11px;color:var(--text3);margin-top:1rem">* 모든 매출은 VAT 제외 · BEP는 월 기준(VAT 제외) · 달성률은 합계매출 ÷ BEP 기준 · 가동률 = 총운행시간 ÷ (차량수 × 조회기간 × 24h) × 100</p>`;
+    <p style="font-size:11px;color:var(--text3);margin-top:1rem">* 모든 매출은 VAT 제외 · BEP는 월 기준(VAT 제외) · 달성률은 합계매출 ÷ BEP · 가동률 = 운행시간 ÷ (차량수 × 조회기간 × 24h) × 100 · 왕복:예약시작~종료일, 편도:운행시작~종료일</p>`;
 
   window._bepCurrentFilter='all'; window._renderRows=renderRows; window._bepUnmatched=unmatched;
   window.setBEPFilter=(filter)=>{
