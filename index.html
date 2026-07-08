@@ -674,7 +674,7 @@ function renderBEP(){
       :filter==='over'?matched.filter(i=>Math.round(i.rate)>=100)
       :matched.filter(i=>Math.round(i.rate)<100);
     list=list.filter(i=>i.vCnt>=minV);
-    if(!list.length)return '<tr><td colspan="11" style="text-align:center;color:var(--text3);padding:1.5rem">해당 항목 없음</td></tr>';
+    if(!list.length)return '<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:1.5rem">해당 항목 없음</td></tr>';
     return list.map(item=>{
       const rate=Math.round(item.rate), isOver=rate>=100;
       const barW=Math.min(rate,150);
@@ -699,8 +699,6 @@ function renderBEP(){
         <td class="num"><strong>${Math.round(item.avgTotal).toLocaleString()}원</strong></td>
         <td class="num" style="color:var(--text3)">${Math.round(item.bep).toLocaleString()}원</td>
         <td style="text-align:right">${isOver?`<span class="bep-status over">✓ ${rate}%</span>`:`<span class="bep-status under">✗ ${rate}%</span>`}</td>
-        <td class="num" style="color:${utilColor(item.utilRound)};font-weight:500">${fmtUtil(item.utilRound)}</td>
-        <td class="num" style="color:${utilColor(item.utilOneway)};font-weight:500">${fmtUtil(item.utilOneway)}</td>
         <td class="num" style="color:${utilColor(item.utilTotal)};font-weight:500">${fmtUtil(item.utilTotal)}</td>
       </tr>`;
     }).join('');
@@ -734,9 +732,7 @@ function renderBEP(){
           <th style="text-align:right">합계(대당)</th>
           <th style="text-align:right">BEP</th>
           <th style="width:80px;text-align:right">달성률</th>
-          <th style="width:70px;text-align:right">왕복가동률</th>
-          <th style="width:70px;text-align:right">편도가동률</th>
-          <th style="width:70px;text-align:right">합계가동률</th>
+          <th style="width:80px;text-align:right">가동률</th>
         </tr></thead>
         <tbody id="bep-table-body">${renderRows('all',5)}</tbody>
       </table>
