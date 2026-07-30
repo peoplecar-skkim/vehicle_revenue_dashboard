@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>투루카 차량별 매출 대시보드</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
   :root{--bg:#f5f5f3;--surface:#fff;--surface2:#f0efe9;--border:rgba(0,0,0,.10);--border2:rgba(0,0,0,.18);--text:#1a1a18;--text2:#5f5e5a;--text3:#888780;--accent:#185FA5;--danger:#A32D2D;--danger-bg:#FCEBEB;--warn-bg:#FAEEDA;--warn-text:#854F0B;--success-bg:#EAF3DE;--success-text:#3B6D11;--pro-bg:#EEEDFE;--pro-text:#3C3489;--radius:10px;--radius-sm:6px}
@@ -82,40 +81,28 @@
 <header>
   <h1><span class="badge-turu">투루카</span> 차량별 매출 대시보드</h1>
   <div style="display:flex;align-items:center;gap:12px">
+    <span id="data-status" style="font-size:12px;color:var(--text3)">데이터 로드 중...</span>
     <span id="bep-status" style="font-size:12px;color:var(--text3)">BEP 로드 중...</span>
   </div>
 </header>
 
 <div class="container">
-  <div class="upload-grid">
-    <div class="upload-zone" id="zone-round" onclick="document.getElementById('input-round').click()">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="16 8 12 4 8 8"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
-      <p>🔄 왕복(카셰어링) 예약 데이터</p>
-      <p class="hint">xlsx · csv · 내카드주유 FALSE만 집계</p>
-      <p class="status" id="status-round"></p>
-    </div>
-    <input type="file" id="input-round" accept=".csv,.xlsx,.xls">
-    <div class="upload-zone" id="zone-oneway" onclick="document.getElementById('input-oneway').click()">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><polyline points="16 8 12 4 8 8"/><line x1="12" y1="4" x2="12" y2="16"/></svg>
-      <p>➡️ 편도(리턴프리) 대여 데이터</p>
-      <p class="hint">xlsx · csv · 선택사항</p>
-      <p class="status" id="status-oneway"></p>
-    </div>
-    <input type="file" id="input-oneway" accept=".csv,.xlsx,.xls">
+  <div id="month-selector" style="display:none;background:var(--surface);border:.5px solid var(--border);border-radius:var(--radius);padding:1rem 1.5rem;margin-bottom:1.25rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span style="font-size:14px;font-weight:600;color:var(--text)">조회 기간</span>
+    <select id="sel-year" onchange="onMonthChange()" style="font-size:15px;padding:6px 14px;border-radius:var(--radius-sm);border:.5px solid var(--border2);background:var(--surface2);color:var(--text);font-weight:600"></select>
+    <span style="font-size:16px;color:var(--text2)">년</span>
+    <select id="sel-month" onchange="onMonthChange()" style="font-size:15px;padding:6px 14px;border-radius:var(--radius-sm);border:.5px solid var(--border2);background:var(--surface2);color:var(--text);font-weight:600"></select>
+    <span style="font-size:16px;color:var(--text2)">월</span>
+    <span id="generated-at" style="margin-left:auto;font-size:11px;color:var(--text3)"></span>
   </div>
 
-  <div id="dashboard" style="display:none">
+  <div id="dashboard">
     <div class="filter-bar">
       <div class="radio-group" id="usage-radio">
         <input type="radio" name="usage" id="usage-all" value="all" checked onchange="setUsageMode('all')"><label for="usage-all">전체</label>
         <input type="radio" name="usage" id="usage-round" value="round" onchange="setUsageMode('round')"><label for="usage-round">왕복전용</label>
         <input type="radio" name="usage" id="usage-mix" value="mix" onchange="setUsageMode('mix')"><label for="usage-mix">혼용</label>
       </div>
-      <div class="filter-sep"></div>
-      <label>기간</label>
-      <input type="date" id="date-from">
-      <span style="font-size:12px;color:var(--text3)">~</span>
-      <input type="date" id="date-to">
       <div class="filter-sep"></div>
       <label>지역</label>
       <select id="filter-region" onchange="markActive(this)"><option value="">전체</option></select>
@@ -249,27 +236,14 @@
 </div>
 
 <script>
-let rawRound=[], rawOneway=[], filteredVehicles=[], allModeVehicles=[], distChart=null, bepMap={};
+let filteredVehicles=[], allModeVehicles=[], distChart=null, bepMap={};
 let usageMode='all';
 
 function normalizeCarType(n){ return n ? String(n).replace(/^\[[^\]]+\]\s*/g,'').trim() : ''; }
 function isNotMyCard(v){ if(v===false)return true; if(v===true)return false; const s=String(v).trim().toLowerCase(); return s==='false'||s==='0'||s===''; }
-function parseDatetime(str){
-  if(str===null||str===undefined||str==='')return null;
-  if(str instanceof Date) return str;
-  if(typeof str==='number'){
-    // XLSX serial number → Date (시간 포함)
-    const ms=(str-25569)*86400000; // 1970-01-01 기준 변환
-    const d=new Date(ms);
-    return isNaN(d.getTime())?null:d;
-  }
-  const s=String(str).trim().replace(/\//g,'-').replace(/\./g,'-');
-  const dt=new Date(s); return isNaN(dt.getTime())?null:dt;
-}
 function parseDate(str){
   if(str===null||str===undefined||str==='')return null;
   if(str instanceof Date) return new Date(str.getFullYear(),str.getMonth(),str.getDate());
-  if(typeof str==='number'){ const d=XLSX.SSF.parse_date_code(str); return d?new Date(d.y,d.m-1,d.d):null; }
   const s=String(str).trim().replace(/\./g,'-').replace(/\//g,'-').slice(0,10);
   if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return null;
   const [y,m,d]=s.split('-').map(Number); const dt=new Date(y,m-1,d);
@@ -285,144 +259,47 @@ function parseBEP(data){
   bepMap={};
   rows.forEach(row=>{ const n=normalizeCarType(String(row[0]||'').trim()); const b=parseFloat(String(row[1]||'').replace(/,/g,'').trim()); if(n&&!isNaN(b)&&b>0)bepMap[n]=b; });
 }
-function setupUploadZone(zoneId, inputId, onLoaded){
-  const zone=document.getElementById(zoneId);
-  const input=document.getElementById(inputId);
-  zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag')});
-  zone.addEventListener('dragleave',()=>zone.classList.remove('drag'));
-  zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('drag');handleUpload(e.dataTransfer.files[0],onLoaded,zoneId)});
-  input.addEventListener('change',e=>handleUpload(e.target.files[0],onLoaded,zoneId));
-}
-function handleUpload(file,onLoaded,zoneId){
-  if(!file)return;
-  const statusId = zoneId==='zone-round' ? 'status-round' : 'status-oneway';
-  document.getElementById(statusId).textContent='불러오는 중...';
-  const reader=new FileReader();
-  reader.onload=e=>{
-    try{
-      const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:false});
-      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
-      onLoaded(rows);
-      document.getElementById(statusId).textContent=`✓ ${file.name} (${rows.length.toLocaleString()}행)`;
-      maybeShowDashboard();
-    }catch(err){ document.getElementById(statusId).textContent='❌ 읽기 실패: '+err.message; }
-  };
-  reader.readAsArrayBuffer(file);
-}
-function maybeShowDashboard(){
-  if(rawRound.length || rawOneway.length){
-    document.getElementById('dashboard').style.display='block';
-    initFilters();
-    applyFilters();
-  }
-}
-setupUploadZone('zone-round','input-round', rows=>{ rawRound=rows; });
-setupUploadZone('zone-oneway','input-oneway', rows=>{ rawOneway=rows; });
 
 function setUsageMode(mode){ usageMode=mode; applyFilters(); }
 
-function initFilters(){
-  const roundDates=rawRound.map(r=>parseDate(r['예약시작일']!==undefined?r['예약시작일']:r['예약 시작일'])).filter(Boolean);
-  const onewayDates=rawOneway.map(r=>parseDate(r['운행시작일'])).filter(Boolean);
-  const allDates=[...roundDates,...onewayDates];
-  if(allDates.length){
-    document.getElementById('date-from').value=fmtDate(allDates.reduce((a,b)=>a<b?a:b));
-    document.getElementById('date-to').value=fmtDate(allDates.reduce((a,b)=>a>b?a:b));
-  }
-  populate('filter-region',[...rawRound.map(r=>r['지역(시/도)']), ...rawOneway.map(r=>r['소속 권역'])]);
-  populate('filter-type', rawRound.map(r=>normalizeCarType(r['차종명'])));
-  populate('filter-vtype', rawRound.map(r=>r['차량유형']));
-}
 function populate(id,values){
   const sel=document.getElementById(id); while(sel.options.length>1)sel.remove(1);
   [...new Set(values.filter(Boolean))].sort().forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
 }
-function buildCarTypeMap(){
-  const map={};
-  rawRound.forEach(r=>{
-    const plate=(r['차량번호']||'').toString().trim();
-    if(plate && !map[plate]) map[plate]={ carType: normalizeCarType(r['차종명']), vtype: r['차량유형']||'' };
-  });
-  return map;
-}
 
-function getFilterContext(){
-  const fromVal=document.getElementById('date-from').value, toVal=document.getElementById('date-to').value;
-  const from=fromVal?parseDate(fromVal):null, to=toVal?parseDate(toVal):null;
-  if(to)to.setHours(23,59,59);
-  const region=document.getElementById('filter-region').value;
-  const carTypeFilter=document.getElementById('filter-type').value;
-  const vtypeFilter=document.getElementById('filter-vtype').value;
-  return {from,to,region,carTypeFilter,vtypeFilter};
-}
 
-function computeVehicles(mode){
-  const {from,to,region,carTypeFilter,vtypeFilter}=getFilterContext();
-  const carTypeMap=buildCarTypeMap();
-
-  const onewayFiltered = rawOneway.filter(r=>{
-    const d=parseDate(r['운행시작일']);
-    if(!d)return false;
-    if(from&&d<from)return false; if(to&&d>to)return false;
-    if(region && r['소속 권역']!==region) return false;
-    return true;
-  });
-  const onewayPlates = new Set(onewayFiltered.map(r=>(r['차량번호']||'').toString().trim()).filter(Boolean));
-
-  const roundFiltered = rawRound.filter(r=>{
-    if(!isNotMyCard(r['내카드주유']))return false;
-    const d=parseDate(r['예약시작일']!==undefined?r['예약시작일']:r['예약 시작일']);
-    if(!d)return false;
-    if(from&&d<from)return false; if(to&&d>to)return false;
-    if(region&&r['지역(시/도)']!==region)return false;
-    if(carTypeFilter&&normalizeCarType(r['차종명'])!==carTypeFilter)return false;
-    if(vtypeFilter&&r['차량유형']!==vtypeFilter)return false;
-    return true;
-  });
-
-  const vMap={};
-
-  roundFiltered.forEach(r=>{
-    const plate=(r['차량번호']||'').toString().trim(); if(!plate)return;
-    const isMix=onewayPlates.has(plate);
-    if(mode==='round' && isMix) return;
-    if(mode==='mix' && !isMix) return;
-    const raw=r['총청구요금'];
-    const amt=vatEx((raw===null||raw===undefined||raw==='')?0:parseFloat(raw.toString().replace(/,/g,''))||0);
-    // 운행시간 계산: '예약 시작일'(시간포함) ~ '예약 종료일' 기준
-    const startD=parseDatetime(r['예약 시작일']!==undefined?r['예약 시작일']:r['예약시작일']);
-    const endD=parseDatetime(r['예약 종료일']!==undefined?r['예약 종료일']:r['예약종료일']);
-    const opHrs=(startD&&endD)?(endD-startD)/3600000:0;
-    if(!vMap[plate])vMap[plate]={plate,carType:normalizeCarType(r['차종명']),vtype:r['차량유형']||'',spot:r['스팟명']||'',region:r['지역(시/도)']||'',total:0,roundTotal:0,onewayTotal:0,cnt:0,isMix,opHours:0,owHours:0};
-    vMap[plate].total+=amt; vMap[plate].roundTotal+=amt; vMap[plate].cnt++;
-    vMap[plate].opHours+=(opHrs>0?opHrs:0);
-  });
-
-  if(mode==='all' || mode==='mix'){
-    onewayFiltered.forEach(r=>{
-      const plate=(r['차량번호']||'').toString().trim(); if(!plate)return;
-      const ctInfo = carTypeMap[plate] || {carType:'미확인(편도전용)', vtype:''};
-      if(carTypeFilter && ctInfo.carType !== carTypeFilter) return;
-      if(vtypeFilter && ctInfo.vtype !== vtypeFilter) return;
-
-      const raw=r['총결제요금'];
-      const amt=vatEx((raw===null||raw===undefined||raw==='')?0:parseFloat(raw.toString().replace(/,/g,''))||0);
-      const owStart=parseDatetime(r['운행시작일']);
-      const owEnd=parseDatetime(r['운행종료일']);
-      const owHrs=(owStart&&owEnd)?(owEnd-owStart)/3600000:0;
-      if(!vMap[plate])vMap[plate]={plate,carType:ctInfo.carType,vtype:ctInfo.vtype,spot:r['출발스테이션']||'',region:r['소속 권역']||'',total:0,roundTotal:0,onewayTotal:0,cnt:0,isMix:true,opHours:0,owHours:0};
-      vMap[plate].total+=amt; vMap[plate].onewayTotal+=amt; vMap[plate].cnt++;
-      vMap[plate].isMix=true;
-      vMap[plate].owHours+=(owHrs>0?owHrs:0);
-    });
-  }
-
-  return Object.values(vMap).sort((a,b)=>a.total-b.total);
-}
 
 function applyFilters(){
-  filteredVehicles=computeVehicles(usageMode);
-  allModeVehicles=usageMode==='all'?filteredVehicles:computeVehicles('all');
+  if(!rawVehicles.length) return;
+
+  const region = document.getElementById('filter-region').value;
+  const carTypeFilter = document.getElementById('filter-type').value;
+  const vtypeFilter = document.getElementById('filter-vtype').value;
+
+  // 지역/차종/차량유형 필터 적용
+  let base = rawVehicles;
+  if(region) base = base.filter(v => v.region === region);
+  if(carTypeFilter) base = base.filter(v => v.carType === carTypeFilter);
+  if(vtypeFilter) base = base.filter(v => v.vtype === vtypeFilter);
+
+  // 혼용 여부 판별
+  const onewayPlates = new Set(base.filter(v => v.isMix).map(v => v.plate));
+
+  // 모드별 필터
+  let modeFiltered = base;
+  if(usageMode === 'round') modeFiltered = base.filter(v => !v.isMix);
+  if(usageMode === 'mix')   modeFiltered = base.filter(v => v.isMix);
+
+  filteredVehicles = modeFiltered.sort((a,b) => a.total - b.total);
+  allModeVehicles  = usageMode === 'all' ? filteredVehicles : base.sort((a,b) => a.total - b.total);
+
+  // 필터 드롭다운 업데이트 (최초 1회 또는 초기화)
+  if(!document.getElementById('filter-region').options.length > 1) {
+    populate('filter-region', rawVehicles.map(v => v.region));
+    populate('filter-type',   rawVehicles.map(v => v.carType));
+    populate('filter-vtype',  rawVehicles.map(v => v.vtype));
+  }
+
   updateThresholdLabel();
   renderMetrics(); renderChart(); renderThreshold(); renderBEP(); renderVtype(); renderUsageBreakdown();
 }
@@ -653,8 +530,8 @@ function renderBEP(){
     ctMap[ct].cnt++; ctMap[ct].round+=v.roundTotal||0; ctMap[ct].oneway+=v.onewayTotal||0; ctMap[ct].total+=v.total;
     ctMap[ct].opHours+=v.opHours||0; ctMap[ct].owHours+=v.owHours||0;
   });
-  const fromVal=document.getElementById('date-from').value, toVal=document.getElementById('date-to').value;
-  const periodDays = (fromVal&&toVal) ? Math.round((new Date(toVal)-new Date(fromVal))/86400000)+1 : 30;
+  const [py, pm] = currentMonthKey ? currentMonthKey.split('-').map(Number) : [new Date().getFullYear(), new Date().getMonth()+1];
+  const periodDays = new Date(py, pm, 0).getDate(); // 해당 월의 일수
   const matched=[],unmatched=[];
   Object.entries(ctMap).forEach(([ct,d])=>{
     if(bepMap[ct]!==undefined){
@@ -854,6 +731,86 @@ function downloadCSV(){
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`저매출차량_${new Date().toISOString().slice(0,10)}.csv`; a.click();
 }
 
+
+// ── data.json 기반 로직 ──────────────────────────────
+let allData = {};       // 전체 월별 데이터
+let currentMonthKey = ''; // 현재 선택된 연월
+
+async function loadData() {
+  const el = document.getElementById('data-status');
+  try {
+    const res = await fetch('data.json?t=' + Date.now());
+    if (!res.ok) throw new Error(res.status);
+    const json = await res.json();
+    allData = json.months || {};
+
+    // 연/월 드롭다운 초기화
+    const available = json.available || Object.keys(allData).sort();
+    document.getElementById('generated-at').textContent =
+      json.generated_at ? `최종 업데이트: ${json.generated_at}` : '';
+
+    const years = [...new Set(available.map(k => k.split('-')[0]))].sort();
+    const selYear = document.getElementById('sel-year');
+    const selMonth = document.getElementById('sel-month');
+
+    selYear.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+
+    // 가장 최신 월로 기본 설정
+    const latest = available[available.length - 1];
+    const [ly, lm] = latest.split('-');
+    selYear.value = ly;
+    updateMonthOptions(available, ly, lm);
+
+    document.getElementById('month-selector').style.display = 'flex';
+    el.textContent = '✓ 데이터 로드 완료'; el.style.color = 'var(--success-text)';
+
+    loadCurrentMonth();
+  } catch(e) {
+    el.textContent = '⚠ data.json 로드 실패'; el.style.color = 'var(--warn-text)';
+  }
+}
+
+function updateMonthOptions(available, year, selectedMonth) {
+  const sel = document.getElementById('sel-month');
+  const months = available.filter(k => k.startsWith(year + '-')).map(k => k.split('-')[1]);
+  sel.innerHTML = months.map(m => `<option value="${m}">${parseInt(m)}월</option>`).join('');
+  if (selectedMonth) sel.value = selectedMonth;
+}
+
+function onMonthChange() {
+  const year = document.getElementById('sel-year').value;
+  const available = Object.keys(allData).sort();
+  // 연도 변경 시 해당 연도의 마지막 달로
+  const yearMonths = available.filter(k => k.startsWith(year + '-'));
+  if (!yearMonths.length) return;
+  const currentMonth = document.getElementById('sel-month').value;
+  const pad = currentMonth ? currentMonth.padStart(2, '0') : '';
+  const hasMonth = yearMonths.includes(`${year}-${pad}`);
+  updateMonthOptions(available, year, hasMonth ? pad : yearMonths[yearMonths.length-1].split('-')[1]);
+  loadCurrentMonth();
+}
+
+function loadCurrentMonth() {
+  const year = document.getElementById('sel-year').value;
+  const month = document.getElementById('sel-month').value?.padStart(2, '0');
+  if (!year || !month) return;
+  currentMonthKey = `${year}-${month}`;
+
+  const vehicles = allData[currentMonthKey];
+  if (!vehicles) return;
+
+  // filteredVehicles 세팅 후 렌더
+  rawVehicles = vehicles;
+  // 드롭다운 옵션 갱신
+  populate('filter-region', vehicles.map(v => v.region));
+  populate('filter-type',   vehicles.map(v => v.carType));
+  populate('filter-vtype',  vehicles.map(v => v.vtype));
+  applyFilters();
+}
+
+// rawVehicles: data.json에서 불러온 월별 차량 데이터
+let rawVehicles = [];
+
 async function loadBEP(){
   const el=document.getElementById('bep-status');
   try{
@@ -870,6 +827,7 @@ async function loadBEP(){
   }
 }
 loadBEP();
+loadData();
 </script>
 </body>
 </html>
