@@ -3,8 +3,8 @@
 실행: python generate_data.py (또는 업데이트.bat 더블클릭)
 
 증분 업데이트:
-- 왕복/편도 DB의 적재이력을 비교해서 변경된 월만 재집계
-- 새 데이터를 DB에 넣고 실행하면 해당 월만 자동으로 업데이트됨
+- 적재이력의 수정시각+적재일시를 함께 비교
+- 변경된 월만 재집계
 """
 
 import sqlite3, json, re, os, calendar, subprocess, sys
@@ -22,7 +22,6 @@ def normalize_cartype(name):
     return re.sub(r'^\[[^\]]+\]\s*', '', str(name)).strip()
 
 def extract_ym(filepath):
-    """파일경로에서 연월 추출 (예: 26.07.xlsx → 2026-07)"""
     m = re.search(r'(\d{2})\.(\d{2})\.xlsx', filepath)
     if m: return f"20{m.group(1)}-{m.group(2)}"
     m = re.search(r'(\d{2})년\s*(\d{1,2})월', filepath)
@@ -32,19 +31,26 @@ def extract_ym(filepath):
     return None
 
 def get_load_history(db_path):
-    """DB의 적재이력에서 연월별 최신 적재일시 반환"""
+    """DB의 적재이력에서 연월별 (수정시각+적재일시) 해시 반환"""
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
-    cur.execute("SELECT 파일경로, 적재일시 FROM 적재이력")
-    rows = cur.fetchall()
+    # 수정시각 컬럼이 있으면 함께 사용
+    cur.execute("PRAGMA table_info(적재이력)")
+    cols = [r[1] for r in cur.fetchall()]
+    if '수정시각' in cols:
+        cur.execute("SELECT 파일경로, 수정시각, 적재일시 FROM 적재이력")
+        rows = [(r[0], f"{r[1]}_{r[2]}") for r in cur.fetchall()]
+    else:
+        cur.execute("SELECT 파일경로, 적재일시 FROM 적재이력")
+        rows = [(r[0], r[1]) for r in cur.fetchall()]
     conn.close()
 
     ym_map = {}
-    for path, ts in rows:
+    for path, sig in rows:
         ym = extract_ym(path or '')
         if ym:
-            if ym not in ym_map or ts > ym_map[ym]:
-                ym_map[ym] = ts
+            if ym not in ym_map or sig > ym_map[ym]:
+                ym_map[ym] = sig
     return ym_map
 
 def generate_month(conn_r, conn_o, year, month):
@@ -103,7 +109,6 @@ def main():
     print(f"  시작: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 55)
 
-    # DB 파일 존재 확인
     for path, name in [(ROUND_DB, '왕복'), (ONEWAY_DB, '편도')]:
         if not os.path.exists(path):
             print(f"\n[오류] {name} DB 파일을 찾을 수 없어요:\n  {path}")
@@ -113,7 +118,6 @@ def main():
     conn_r = sqlite3.connect(ROUND_DB)
     conn_o = sqlite3.connect(ONEWAY_DB)
 
-    # DB에서 사용 가능한 연월 목록
     cur = conn_r.cursor()
     cur.execute("""
         SELECT DISTINCT strftime('%Y', "예약 시작일") as y,
@@ -124,15 +128,14 @@ def main():
     """)
     available = [(int(y), int(m)) for y, m in cur.fetchall()]
 
-    # 현재 적재이력 (연월별 최신 적재일시)
+    # 현재 적재이력 (수정시각+적재일시 기반)
     history_r = get_load_history(ROUND_DB)
     history_o = get_load_history(ONEWAY_DB)
-    # 둘 중 더 최신 시각을 해당 월의 기준으로
     current_history = {}
     for ym in set(history_r) | set(history_o):
-        ts_r = history_r.get(ym, '')
-        ts_o = history_o.get(ym, '')
-        current_history[ym] = max(ts_r, ts_o)
+        sig_r = history_r.get(ym, '')
+        sig_o = history_o.get(ym, '')
+        current_history[ym] = f"{sig_r}|{sig_o}"
 
     # 기존 data.json 로드
     existing_months = {}
@@ -152,13 +155,13 @@ def main():
     to_skip = []
     for y, m in available:
         key = f"{y}-{m:02d}"
-        cur_ts = current_history.get(key, '')
-        prev_ts = existing_history.get(key, '')
+        cur_sig = current_history.get(key, '')
+        prev_sig = existing_history.get(key, '')
 
         if key not in existing_months:
             to_generate.append((y, m, '🆕 신규'))
-        elif cur_ts != prev_ts:
-            to_generate.append((y, m, f'🔄 재집계 (적재이력 변경: {cur_ts[:16]})'))
+        elif cur_sig != prev_sig:
+            to_generate.append((y, m, '🔄 재집계 (데이터 변경됨)'))
         else:
             to_skip.append(key)
 
@@ -173,7 +176,6 @@ def main():
         input("\n엔터를 눌러 종료...")
         return
 
-    # 집계 실행
     print()
     result_months = dict(existing_months)
     for i, (y, m, reason) in enumerate(to_generate, 1):
@@ -186,15 +188,14 @@ def main():
     conn_r.close()
     conn_o.close()
 
-    # data.json 저장 (적재이력도 함께 저장)
-    all_available = sorted(result_months.keys())
-    # 저장 시 현재 적재이력 갱신 (집계한 월만)
+    # 적재이력 갱신 (집계한 월만)
     saved_history = dict(existing_history)
     for y, m, _ in to_generate:
         key = f"{y}-{m:02d}"
         if key in current_history:
             saved_history[key] = current_history[key]
 
+    all_available = sorted(result_months.keys())
     output_data = {
         'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'available': all_available,
@@ -208,7 +209,6 @@ def main():
     size_mb = OUTPUT.stat().st_size / 1024 / 1024
     print(f"저장 완료: {size_mb:.1f}MB ({len(all_available)}개월)")
 
-    # GitHub Push
     print("\nGitHub에 업로드 중...")
     repo_dir = Path(__file__).parent
     try:
