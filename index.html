@@ -822,6 +822,7 @@ async function loadBEP(){
     const cnt=Object.keys(bepMap).length;
     el.textContent=`✓ BEP ${cnt}개 차종`; el.style.color='var(--success-text)';
     const ls=document.getElementById('bep-load-status'); if(ls)ls.textContent=`${cnt}개 차종 로드됨`;
+    if(filteredVehicles.length){ renderMetrics(); renderBEP(); renderVtype(); }
   }catch(e){
     el.textContent='⚠ BEP 로드 실패'; el.style.color='var(--warn-text)';
     const ls=document.getElementById('bep-load-status'); if(ls)ls.textContent='bep.xlsx 없음';
