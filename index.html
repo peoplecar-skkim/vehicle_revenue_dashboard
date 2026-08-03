@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>투루카 차량별 매출 대시보드</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
   :root{--bg:#f5f5f3;--surface:#fff;--surface2:#f0efe9;--border:rgba(0,0,0,.10);--border2:rgba(0,0,0,.18);--text:#1a1a18;--text2:#5f5e5a;--text3:#888780;--accent:#185FA5;--danger:#A32D2D;--danger-bg:#FCEBEB;--warn-bg:#FAEEDA;--warn-text:#854F0B;--success-bg:#EAF3DE;--success-text:#3B6D11;--pro-bg:#EEEDFE;--pro-text:#3C3489;--radius:10px;--radius-sm:6px}
@@ -138,7 +137,6 @@
       <div class="bar-bg" style="height:14px;border-radius:7px" id="usage-bar"></div>
       <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:var(--text2)" id="usage-bar-labels"></div>
     </div>
-
 
     <div class="section" id="weekly-trend-section">
       <div class="section-header">
@@ -782,7 +780,6 @@ async function loadData() {
     el.textContent = '✓ 데이터 로드 완료'; el.style.color = 'var(--success-text)';
 
     loadCurrentMonth();
-    if (json.weekly) initWeeklyChart(json.weekly);
   } catch(e) {
     el.textContent = '⚠ data.json 로드 실패'; el.style.color = 'var(--warn-text)';
   }
@@ -819,7 +816,6 @@ function loadCurrentMonth() {
 
   // filteredVehicles 세팅 후 렌더
   rawVehicles = vehicles;
-  // 주차 차트 초기화 (최초 로드 시 또는 월 변경 시 allData.weekly 사용)
   if (allData.weekly) initWeeklyChart(allData.weekly);
   // 드롭다운 옵션 갱신
   populate('filter-region', vehicles.map(v => v.region));
@@ -831,29 +827,26 @@ function loadCurrentMonth() {
 // rawVehicles: data.json에서 불러온 월별 차량 데이터
 let rawVehicles = [];
 
-
 // ── 주차별 트렌드 차트 ──────────────────────────────
 let weeklyChart = null;
 let weeklyData = [];
+const YEAR_COLORS = {'2024':'#185FA5','2025':'#1D9E75','2026':'#E24B4A','2027':'#BA7517'};
 
-const YEAR_COLORS = {
-  '2024': '#378ADD',
-  '2025': '#1D9E75',
-  '2026': '#E24B4A',
-  '2027': '#BA7517'
-};
-const YEAR_DASH = {
-  '2024': [6, 3],
-  '2025': [4, 2],
-  '2026': [],
-  '2027': [2, 2]
-};
+function getWeekMonth(year, week) {
+  const jan1 = new Date(year, 0, 1);
+  const dow = jan1.getDay() || 7;
+  const firstMonday = new Date(jan1);
+  firstMonday.setDate(jan1.getDate() - (dow - 1));
+  const monday = new Date(firstMonday);
+  monday.setDate(firstMonday.getDate() + (week - 1) * 7);
+  const thursday = new Date(monday);
+  thursday.setDate(monday.getDate() + 3);
+  return thursday.getMonth() + 1;
+}
 
 function initWeeklyChart(data) {
   weeklyData = data || [];
   if (!weeklyData.length) return;
-
-  // 연도 목록 추출
   const years = [...new Set(weeklyData.map(d => String(d.year)))].sort();
   const container = document.getElementById('year-checkboxes');
   if (container) {
@@ -862,119 +855,90 @@ function initWeeklyChart(data) {
         <input type="checkbox" value="${y}" checked onchange="renderWeeklyChart()"
           style="accent-color:${YEAR_COLORS[y]||'#888'}">
         <span style="color:${YEAR_COLORS[y]||'#888'};font-weight:600">${y}년</span>
-      </label>
-    `).join('');
+      </label>`).join('');
   }
   renderWeeklyChart();
 }
 
 function renderWeeklyChart() {
   if (!weeklyData.length) return;
-
   const metric = document.querySelector('input[name="wmetric"]:checked')?.value || 'avg';
   const checkedYears = [...document.querySelectorAll('#year-checkboxes input:checked')].map(el => el.value);
-
-  // 1~53주 전체 레이블
   const allWeeks = Array.from({length: 53}, (_, i) => i + 1);
 
-  // 주차별 월 매핑 (목요일 기준)
-  function getWeekMonth(year, week) {
-    // 해당 연도 1월 1일의 월요일 기준 첫 주 월요일
-    const jan1 = new Date(year, 0, 1);
-    const dayOfWeek = jan1.getDay() || 7;
-    const firstMonday = new Date(jan1);
-    firstMonday.setDate(jan1.getDate() - (dayOfWeek - 1));
-    const monday = new Date(firstMonday);
-    monday.setDate(firstMonday.getDate() + (week - 1) * 7);
-    const thursday = new Date(monday);
-    thursday.setDate(monday.getDate() + 3);
-    return thursday.getMonth() + 1;
-  }
-
-  // X축 레이블: 월이 바뀌는 주차에 월 표시
+  // X축 레이블 - 월이 바뀌는 주차에 월 표시
   const labels = allWeeks.map(w => {
     const m = getWeekMonth(2026, w);
-    const prevM = w > 1 ? getWeekMonth(2026, w - 1) : 0;
-    if (m !== prevM) return `${w}주\n(${m}월)`;
-    return `${w}주`;
+    const prevM = w > 1 ? getWeekMonth(2026, w-1) : 0;
+    return m !== prevM ? `${w}주\n(${m}월)` : `${w}주`;
   });
 
-  const COLORS = ['#185FA5','#1D9E75','#E24B4A','#BA7517','#7F77DD'];
   const years = [...new Set(weeklyData.map(d => String(d.year)))].sort().filter(y => checkedYears.includes(y));
-
   const datasets = years.map((year, idx) => {
-    const yearData = weeklyData.filter(d => String(d.year) === year);
     const dataMap = {};
-    yearData.forEach(d => { dataMap[d.week] = d; });
-
+    weeklyData.filter(d => String(d.year) === year).forEach(d => { dataMap[d.week] = d; });
     const values = allWeeks.map(w => {
       const d = dataMap[w];
       if (!d) return null;
-      if (metric === 'total') return Math.round(d.totalRev / 100000000 * 100) / 100;
-      return d.vehicles > 0 ? Math.round(d.totalRev / d.vehicles) : null;
+      return metric === 'total' ? Math.round(d.totalRev/100000000*100)/100
+                                : (d.vehicles > 0 ? Math.round(d.totalRev/d.vehicles) : null);
     });
-
-    const color = COLORS[idx % COLORS.length];
+    const color = YEAR_COLORS[year] || '#888';
     return {
-      label: `${year}년`,
-      data: values,
-      borderColor: color,
-      backgroundColor: color + '15',
-      borderDash: [],
-      borderWidth: 2,
-      pointRadius: 2,
-      pointHoverRadius: 6,
-      tension: 0.3,
-      spanGaps: false
+      label: `${year}년`, data: values,
+      borderColor: color, backgroundColor: color+'15',
+      borderDash: [], borderWidth: 2,
+      pointRadius: 2, pointHoverRadius: 6,
+      tension: 0.3, spanGaps: false
     };
   });
-
-  const yLabel = metric === 'total' ? '총매출(억원)' : '대당매출(원)';
 
   if (weeklyChart) weeklyChart.destroy();
   weeklyChart = new Chart(document.getElementById('weeklyChart'), {
     type: 'line',
     data: { labels, datasets },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { position: 'top', labels: { font: { size: 12 }, usePointStyle: true } },
-        tooltip: {
-          callbacks: {
-            label: ctx => {
-              const v = ctx.parsed.y;
-              if (v === null || v === undefined) return null;
-              if (metric === 'total') return ` ${ctx.dataset.label}: ${v.toFixed(2)}억원`;
-              return ` ${ctx.dataset.label}: ${v.toLocaleString()}원`;
-            }
-          }
-        }
+        tooltip: { callbacks: { label: ctx => {
+          const v = ctx.parsed.y;
+          if (v == null) return null;
+          return metric === 'total' ? ` ${ctx.dataset.label}: ${v.toFixed(2)}억원`
+                                    : ` ${ctx.dataset.label}: ${v.toLocaleString()}원`;
+        }}}
       },
       scales: {
-        x: {
-          grid: { display: false },
-          ticks: {
-            font: { size: 10 },
-            color: '#888780',
-            maxRotation: 0,
-            autoSkip: false,
-            callback: function(val, idx) {
-              return this.getLabelForValue(val);
-            }
-          }
-        },
+        x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#888780', maxRotation: 0, autoSkip: false }},
         y: {
           grid: { color: 'rgba(136,135,128,0.12)' },
-          ticks: {
-            font: { size: 10 },
-            color: '#888780',
-            callback: v => metric === 'total' ? v + '억' : (v/10000).toFixed(0) + '만'
-          },
-          title: { display: true, text: yLabel, font: { size: 11 }, color: '#888780' }
+          ticks: { font: { size: 10 }, color: '#888780',
+            callback: v => metric === 'total' ? v+'억' : Math.round(v/10000)+'만' },
+          title: { display: true, text: metric==='total'?'총매출(억원)':'대당매출(원)', font: { size: 11 }, color: '#888780' }
         }
       }
     }
   });
 }
 
+
+async function loadBEP(){
+  const el=document.getElementById('bep-status');
+  try{
+    const res=await fetch('bep.xlsx');
+    if(!res.ok)throw new Error();
+    const buf=await res.arrayBuffer();
+    parseBEP(new Uint8Array(buf));
+    const cnt=Object.keys(bepMap).length;
+    el.textContent=`✓ BEP ${cnt}개 차종`; el.style.color='var(--success-text)';
+    const ls=document.getElementById('bep-load-status'); if(ls)ls.textContent=`${cnt}개 차종 로드됨`;
+  }catch(e){
+    el.textContent='⚠ BEP 로드 실패'; el.style.color='var(--warn-text)';
+    const ls=document.getElementById('bep-load-status'); if(ls)ls.textContent='bep.xlsx 없음';
+  }
+}
+loadBEP();
+loadData();
+</script>
+</body>
+</html>
