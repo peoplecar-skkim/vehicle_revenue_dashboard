@@ -139,6 +139,22 @@
       <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:var(--text2)" id="usage-bar-labels"></div>
     </div>
 
+
+    <div class="section" id="weekly-trend-section">
+      <div class="section-header">
+        <div class="section-title"><span class="dot"></span> 주차별 매출 트렌드</div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div style="display:flex;gap:8px" id="year-checkboxes"></div>
+          <div class="radio-group" id="weekly-metric-radio">
+            <input type="radio" name="wmetric" id="wm-total" value="total" checked onchange="renderWeeklyChart()"><label for="wm-total">총매출</label>
+            <input type="radio" name="wmetric" id="wm-avg" value="avg" onchange="renderWeeklyChart()"><label for="wm-avg">대당매출</label>
+          </div>
+        </div>
+      </div>
+      <div style="position:relative;width:100%;height:300px"><canvas id="weeklyChart"></canvas></div>
+      <p style="font-size:11px;color:var(--text3);margin-top:.5rem">* 주차 기준: 월요일~일요일 · VAT 제외</p>
+    </div>
+
     <div class="section">
       <div class="section-header">
         <div class="section-title"><span class="dot"></span> 차량별 매출 분포</div>
@@ -766,6 +782,7 @@ async function loadData() {
     el.textContent = '✓ 데이터 로드 완료'; el.style.color = 'var(--success-text)';
 
     loadCurrentMonth();
+    if (json.weekly) initWeeklyChart(json.weekly);
   } catch(e) {
     el.textContent = '⚠ data.json 로드 실패'; el.style.color = 'var(--warn-text)';
   }
@@ -802,6 +819,8 @@ function loadCurrentMonth() {
 
   // filteredVehicles 세팅 후 렌더
   rawVehicles = vehicles;
+  // 주차 차트 초기화 (최초 로드 시 또는 월 변경 시 allData.weekly 사용)
+  if (allData.weekly) initWeeklyChart(allData.weekly);
   // 드롭다운 옵션 갱신
   populate('filter-region', vehicles.map(v => v.region));
   populate('filter-type',   vehicles.map(v => v.carType));
@@ -811,6 +830,120 @@ function loadCurrentMonth() {
 
 // rawVehicles: data.json에서 불러온 월별 차량 데이터
 let rawVehicles = [];
+
+
+// ── 주차별 트렌드 차트 ──────────────────────────────
+let weeklyChart = null;
+let weeklyData = [];
+
+const YEAR_COLORS = {
+  '2024': '#378ADD',
+  '2025': '#1D9E75',
+  '2026': '#E24B4A',
+  '2027': '#BA7517'
+};
+const YEAR_DASH = {
+  '2024': [6, 3],
+  '2025': [4, 2],
+  '2026': [],
+  '2027': [2, 2]
+};
+
+function initWeeklyChart(data) {
+  weeklyData = data || [];
+  if (!weeklyData.length) return;
+
+  // 연도 목록 추출
+  const years = [...new Set(weeklyData.map(d => String(d.year)))].sort();
+  const container = document.getElementById('year-checkboxes');
+  if (container) {
+    container.innerHTML = years.map(y => `
+      <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer">
+        <input type="checkbox" value="${y}" checked onchange="renderWeeklyChart()"
+          style="accent-color:${YEAR_COLORS[y]||'#888'}">
+        <span style="color:${YEAR_COLORS[y]||'#888'};font-weight:600">${y}년</span>
+      </label>
+    `).join('');
+  }
+  renderWeeklyChart();
+}
+
+function renderWeeklyChart() {
+  if (!weeklyData.length) return;
+
+  const metric = document.querySelector('input[name="wmetric"]:checked')?.value || 'total';
+  const checkedYears = [...document.querySelectorAll('#year-checkboxes input:checked')].map(el => el.value);
+
+  const years = [...new Set(weeklyData.map(d => String(d.year)))].sort().filter(y => checkedYears.includes(y));
+  const allWeeks = [...new Set(weeklyData.map(d => d.week))].sort((a,b)=>a-b);
+
+  const datasets = years.map(year => {
+    const yearData = weeklyData.filter(d => String(d.year) === year);
+    const dataMap = {};
+    yearData.forEach(d => { dataMap[d.week] = d; });
+
+    const values = allWeeks.map(w => {
+      const d = dataMap[w];
+      if (!d) return null;
+      if (metric === 'total') return Math.round(d.totalRev / 100000000 * 100) / 100; // 억 단위
+      if (metric === 'avg') return d.vehicles > 0 ? Math.round(d.totalRev / d.vehicles) : null;
+      return null;
+    });
+
+    return {
+      label: `${year}년`,
+      data: values,
+      borderColor: YEAR_COLORS[year] || '#888',
+      backgroundColor: (YEAR_COLORS[year] || '#888') + '20',
+      borderDash: YEAR_DASH[year] || [],
+      borderWidth: 2,
+      pointRadius: 3,
+      pointHoverRadius: 6,
+      tension: 0.3,
+      spanGaps: true
+    };
+  });
+
+  const labels = allWeeks.map(w => `${w}주`);
+  const yLabel = metric === 'total' ? '매출(억원)' : '대당매출(원)';
+
+  if (weeklyChart) weeklyChart.destroy();
+  weeklyChart = new Chart(document.getElementById('weeklyChart'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 12 }, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              if (v === null) return null;
+              if (metric === 'total') return ` ${ctx.dataset.label}: ${v.toFixed(2)}억원`;
+              return ` ${ctx.dataset.label}: ${v.toLocaleString()}원`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { font: { size: 10 }, color: '#888780', autoSkip: true, maxTicksLimit: 26 }
+        },
+        y: {
+          grid: { color: 'rgba(136,135,128,0.12)' },
+          ticks: {
+            font: { size: 10 }, color: '#888780',
+            callback: v => metric === 'total' ? v + '억' : v.toLocaleString()
+          },
+          title: { display: true, text: yLabel, font: { size: 11 }, color: '#888780' }
+        }
+      }
+    }
+  });
+}
 
 async function loadBEP(){
   const el=document.getElementById('bep-status');

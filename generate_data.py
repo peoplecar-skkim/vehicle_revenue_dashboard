@@ -3,8 +3,8 @@
 실행: python generate_data.py (또는 업데이트.bat 더블클릭)
 
 증분 업데이트:
-- 적재이력의 수정시각+적재일시를 함께 비교
-- 변경된 월만 재집계
+- 연월별 실제 데이터 행 수를 비교해서 변경된 월만 재집계
+- 데이터가 추가/변경되면 행 수가 달라져서 자동 감지
 """
 
 import sqlite3, json, re, os, calendar, subprocess, sys
@@ -21,37 +21,83 @@ def normalize_cartype(name):
     if not name: return ''
     return re.sub(r'^\[[^\]]+\]\s*', '', str(name)).strip()
 
-def extract_ym(filepath):
-    m = re.search(r'(\d{2})\.(\d{2})\.xlsx', filepath)
-    if m: return f"20{m.group(1)}-{m.group(2)}"
-    m = re.search(r'(\d{2})년\s*(\d{1,2})월', filepath)
-    if m: return f"20{m.group(1)}-{int(m.group(2)):02d}"
-    m = re.search(r'(\d{4})[-_](\d{2})', filepath)
-    if m: return f"{m.group(1)}-{m.group(2)}"
-    return None
+def get_row_counts(conn_r, conn_o, available):
+    """연월별 실제 데이터 행 수 반환"""
+    counts = {}
+    cur_r = conn_r.cursor()
+    cur_o = conn_o.cursor()
 
-def get_load_history(db_path):
-    """DB의 적재이력에서 연월별 (수정시각+적재일시) 해시 반환"""
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    # 수정시각 컬럼이 있으면 함께 사용
-    cur.execute("PRAGMA table_info(적재이력)")
-    cols = [r[1] for r in cur.fetchall()]
-    if '수정시각' in cols:
-        cur.execute("SELECT 파일경로, 수정시각, 적재일시 FROM 적재이력")
-        rows = [(r[0], f"{r[1]}_{r[2]}") for r in cur.fetchall()]
-    else:
-        cur.execute("SELECT 파일경로, 적재일시 FROM 적재이력")
-        rows = [(r[0], r[1]) for r in cur.fetchall()]
-    conn.close()
+    for y, m in available:
+        dm = calendar.monthrange(y, m)[1]
+        date_from = f"{y}-{m:02d}-01"
+        date_to   = f"{y}-{m:02d}-{dm:02d} 23:59:59"
+        key = f"{y}-{m:02d}"
 
-    ym_map = {}
-    for path, sig in rows:
-        ym = extract_ym(path or '')
-        if ym:
-            if ym not in ym_map or sig > ym_map[ym]:
-                ym_map[ym] = sig
-    return ym_map
+        cur_r.execute("""
+            SELECT COUNT(*) FROM rentals_카셰어링
+            WHERE "예약 시작일" >= ? AND "예약 시작일" <= ?
+            AND (내카드주유 = 0 OR 내카드주유 IS NULL)
+        """, (date_from, date_to))
+        cnt_r = cur_r.fetchone()[0]
+
+        cur_o.execute("""
+            SELECT COUNT(*) FROM rentals_리턴프리
+            WHERE 운행시작일 >= ? AND 운행시작일 <= ?
+        """, (date_from, date_to))
+        cnt_o = cur_o.fetchone()[0]
+
+        counts[key] = f"{cnt_r}_{cnt_o}"
+
+    return counts
+
+
+def generate_weekly(conn_r, conn_o):
+    """전체 연도별 주차별 집계 (왕복+편도)"""
+    cur_r = conn_r.cursor()
+    cur_r.execute("""
+        SELECT 
+            strftime('%Y', "예약 시작일") as year,
+            CAST(strftime('%W', date("예약 시작일", 'weekday 0', '-6 days')) AS INTEGER) + 1 as week,
+            COUNT(DISTINCT 차량번호) as vehicles,
+            SUM(총청구요금) as round_rev
+        FROM rentals_카셰어링
+        WHERE (내카드주유 = 0 OR 내카드주유 IS NULL)
+        AND "예약 시작일" IS NOT NULL
+        GROUP BY year, week
+    """)
+    round_data = {}
+    for year, week, v, rev in cur_r.fetchall():
+        round_data[(year, int(week))] = {'vehicles': v, 'round_rev': (rev or 0)/1.1}
+
+    cur_o = conn_o.cursor()
+    cur_o.execute("""
+        SELECT 
+            strftime('%Y', 운행시작일) as year,
+            CAST(strftime('%W', date(운행시작일, 'weekday 0', '-6 days')) AS INTEGER) + 1 as week,
+            COUNT(DISTINCT 차량번호) as vehicles,
+            SUM(총결제요금) as oneway_rev
+        FROM rentals_리턴프리
+        WHERE 운행시작일 IS NOT NULL
+        GROUP BY year, week
+    """)
+    oneway_data = {}
+    for year, week, v, rev in cur_o.fetchall():
+        oneway_data[(year, int(week))] = {'vehicles': v, 'oneway_rev': (rev or 0)/1.1}
+
+    all_keys = set(round_data.keys()) | set(oneway_data.keys())
+    weekly = []
+    for (year, week) in sorted(all_keys):
+        r = round_data.get((year, week), {})
+        o = oneway_data.get((year, week), {})
+        weekly.append({
+            'year': int(year),
+            'week': week,
+            'roundRev': round(r.get('round_rev', 0)),
+            'onewayRev': round(o.get('oneway_rev', 0)),
+            'totalRev': round(r.get('round_rev', 0) + o.get('oneway_rev', 0)),
+            'vehicles': r.get('vehicles', 0)
+        })
+    return weekly
 
 def generate_month(conn_r, conn_o, year, month):
     dm = calendar.monthrange(year, month)[1]
@@ -118,6 +164,7 @@ def main():
     conn_r = sqlite3.connect(ROUND_DB)
     conn_o = sqlite3.connect(ONEWAY_DB)
 
+    # DB에서 사용 가능한 연월 목록
     cur = conn_r.cursor()
     cur.execute("""
         SELECT DISTINCT strftime('%Y', "예약 시작일") as y,
@@ -128,40 +175,36 @@ def main():
     """)
     available = [(int(y), int(m)) for y, m in cur.fetchall()]
 
-    # 현재 적재이력 (수정시각+적재일시 기반)
-    history_r = get_load_history(ROUND_DB)
-    history_o = get_load_history(ONEWAY_DB)
-    current_history = {}
-    for ym in set(history_r) | set(history_o):
-        sig_r = history_r.get(ym, '')
-        sig_o = history_o.get(ym, '')
-        current_history[ym] = f"{sig_r}|{sig_o}"
+    # 현재 연월별 행 수 조회
+    print(f"\n연월별 행 수 확인 중...", end=' ', flush=True)
+    current_counts = get_row_counts(conn_r, conn_o, available)
+    print("완료")
 
     # 기존 data.json 로드
     existing_months = {}
-    existing_history = {}
+    existing_counts = {}
     if OUTPUT.exists():
         try:
             with open(OUTPUT, 'r', encoding='utf-8') as f:
                 saved = json.load(f)
             existing_months = saved.get('months', {})
-            existing_history = saved.get('load_history', {})
-            print(f"\n기존 data.json: {len(existing_months)}개월 보유")
+            existing_counts = saved.get('row_counts', {})
+            print(f"기존 data.json: {len(existing_months)}개월 보유")
         except:
-            print("\n기존 data.json 읽기 실패 → 전체 재생성")
+            print("기존 data.json 읽기 실패 → 전체 재생성")
 
     # 집계 대상 결정
     to_generate = []
     to_skip = []
     for y, m in available:
         key = f"{y}-{m:02d}"
-        cur_sig = current_history.get(key, '')
-        prev_sig = existing_history.get(key, '')
+        cur_cnt = current_counts.get(key, '')
+        prev_cnt = existing_counts.get(key, '')
 
         if key not in existing_months:
             to_generate.append((y, m, '🆕 신규'))
-        elif cur_sig != prev_sig:
-            to_generate.append((y, m, '🔄 재집계 (데이터 변경됨)'))
+        elif cur_cnt != prev_cnt:
+            to_generate.append((y, m, f'🔄 재집계 (행수 변경: {prev_cnt} → {cur_cnt})'))
         else:
             to_skip.append(key)
 
@@ -185,22 +228,28 @@ def main():
         result_months[key] = vehicles
         print(f"{len(vehicles)}대 완료")
 
+    # 주차별 집계
+    print("\n주차별 집계 중...", end=' ', flush=True)
+    weekly_data = generate_weekly(conn_r, conn_o)
+    print(f"{len(weekly_data)}건 완료")
+
     conn_r.close()
     conn_o.close()
 
-    # 적재이력 갱신 (집계한 월만)
-    saved_history = dict(existing_history)
+    # 행 수 기록 갱신
+    saved_counts = dict(existing_counts)
     for y, m, _ in to_generate:
         key = f"{y}-{m:02d}"
-        if key in current_history:
-            saved_history[key] = current_history[key]
+        if key in current_counts:
+            saved_counts[key] = current_counts[key]
 
     all_available = sorted(result_months.keys())
     output_data = {
         'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'available': all_available,
-        'load_history': saved_history,
-        'months': {k: result_months[k] for k in all_available}
+        'row_counts': saved_counts,
+        'months': {k: result_months[k] for k in all_available},
+        'weekly': weekly_data
     }
 
     print(f"\ndata.json 저장 중...")
