@@ -145,8 +145,8 @@
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <div style="display:flex;gap:8px" id="year-checkboxes"></div>
           <div class="radio-group" id="weekly-metric-radio">
-            <input type="radio" name="wmetric" id="wm-total" value="total" onchange="renderWeeklyChart()"><label for="wm-total">총매출</label>
             <input type="radio" name="wmetric" id="wm-avg" value="avg" checked onchange="renderWeeklyChart()"><label for="wm-avg">대당매출</label>
+            <input type="radio" name="wmetric" id="wm-bep" value="bep_rate" onchange="renderWeeklyChart()"><label for="wm-bep">BEP 달성률</label>
           </div>
         </div>
       </div>
@@ -847,18 +847,42 @@ function getWeekMonth(year, week) {
   return thursday.getMonth() + 1;
 }
 
+// ISO 8601 기준 오늘이 몇 주차인지 계산 (미래 주차 데이터 오류 방지용 가드에 사용)
+function getISOWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+
+// 현재(조회 시점) 필터된 차량 기준 가중평균 BEP 산출 (주차별 BEP 달성률 계산용)
+function getWeightedBEP(vehicles) {
+  if (!Object.keys(bepMap).length || !vehicles || !vehicles.length) return null;
+  const ctMap = {};
+  vehicles.forEach(v => { const ct = v.carType || '미분류'; if (!ctMap[ct]) ctMap[ct] = 0; ctMap[ct]++; });
+  let wBEP = 0, tCnt = 0;
+  Object.entries(ctMap).forEach(([ct, cnt]) => { if (bepMap[ct] !== undefined) { wBEP += bepMap[ct] * cnt; tCnt += cnt; } });
+  return tCnt > 0 ? wBEP / tCnt : null;
+}
+
 function initWeeklyChart(data) {
   weeklyData = data || [];
   if (!weeklyData.length) return;
   const years = [...new Set(weeklyData.map(d => String(d.year)))].sort();
   const container = document.getElementById('year-checkboxes');
+  const thisYear = new Date().getFullYear();
   if (container) {
-    container.innerHTML = years.map(y => `
+    container.innerHTML = years.map(y => {
+      // 기본값: 올해 + 전년도만 체크, 나머지는 해제
+      const isDefaultOn = Number(y) === thisYear || Number(y) === thisYear - 1;
+      return `
       <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer">
-        <input type="checkbox" value="${y}" checked onchange="renderWeeklyChart()"
+        <input type="checkbox" value="${y}" ${isDefaultOn ? 'checked' : ''} onchange="renderWeeklyChart()"
           style="accent-color:${YEAR_COLORS[y]||'#888'}">
         <span style="color:${YEAR_COLORS[y]||'#888'};font-weight:600">${y}년</span>
-      </label>`).join('');
+      </label>`;
+    }).join('');
   }
   renderWeeklyChart();
 }
@@ -869,22 +893,34 @@ function renderWeeklyChart() {
   const checkedYears = [...document.querySelectorAll('#year-checkboxes input:checked')].map(el => el.value);
   const allWeeks = Array.from({length: 53}, (_, i) => i + 1);
 
-  // X축 레이블 - 월이 바뀌는 주차에 월 표시
+  // X축 레이블 - 주차 숫자는 매주 표시, 월 표시는 월이 바뀌는 주차 아래에 두 번째 줄로만 표시
   const labels = allWeeks.map(w => {
     const m = getWeekMonth(2026, w);
     const prevM = w > 1 ? getWeekMonth(2026, w-1) : 0;
-    return m !== prevM ? `${w}주\n(${m}월)` : `${w}주`;
+    return m !== prevM ? [`${w}`, `${m}월`] : [`${w}`];
   });
+
+  const today = new Date();
+  const todayYear = today.getFullYear();
+  const todayWeek = getISOWeek(today);
+
+  // BEP 달성률 지표용 가중평균 BEP (현재 필터 기준, 없으면 null)
+  const wBEP = metric === 'bep_rate' ? getWeightedBEP(filteredVehicles.length ? filteredVehicles : rawVehicles) : null;
 
   const years = [...new Set(weeklyData.map(d => String(d.year)))].sort().filter(y => checkedYears.includes(y));
   const datasets = years.map((year, idx) => {
     const dataMap = {};
     weeklyData.filter(d => String(d.year) === year).forEach(d => { dataMap[d.week] = d; });
     const values = allWeeks.map(w => {
+      // 아직 도래하지 않은 미래 주차는 데이터가 있어도 표시하지 않음 (연도 경계 집계 오류 방지)
+      if (Number(year) === todayYear && w > todayWeek) return null;
       const d = dataMap[w];
-      if (!d) return null;
-      return metric === 'total' ? Math.round(d.totalRev/100000000*100)/100
-                                : (d.vehicles > 0 ? Math.round(d.totalRev/d.vehicles) : null);
+      if (!d || !d.vehicles) return null;
+      const avgRev = d.totalRev / d.vehicles;
+      if (metric === 'bep_rate') {
+        return wBEP ? Math.round(avgRev / wBEP * 1000) / 10 : null;
+      }
+      return Math.round(avgRev);
     });
     const color = YEAR_COLORS[year] || '#888';
     return {
@@ -897,6 +933,14 @@ function renderWeeklyChart() {
   });
 
   if (weeklyChart) weeklyChart.destroy();
+
+  if (metric === 'bep_rate' && !wBEP) {
+    // BEP 미로드 상태에서는 안내만 표시
+    const ctx = document.getElementById('weeklyChart').getContext('2d');
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    return;
+  }
+
   weeklyChart = new Chart(document.getElementById('weeklyChart'), {
     type: 'line',
     data: { labels, datasets },
@@ -904,20 +948,22 @@ function renderWeeklyChart() {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { position: 'top', labels: { font: { size: 12 }, usePointStyle: true } },
-        tooltip: { callbacks: { label: ctx => {
-          const v = ctx.parsed.y;
-          if (v == null) return null;
-          return metric === 'total' ? ` ${ctx.dataset.label}: ${v.toFixed(2)}억원`
-                                    : ` ${ctx.dataset.label}: ${v.toLocaleString()}원`;
-        }}}
+        tooltip: { callbacks: {
+          label: ctx => {
+            const v = ctx.parsed.y;
+            if (v == null) return null;
+            return metric === 'bep_rate' ? ` ${ctx.dataset.label}: ${v}%`
+                                          : ` ${ctx.dataset.label}: ${v.toLocaleString()}원`;
+          }
+        }}
       },
       scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#888780', maxRotation: 0, autoSkip: false }},
+        x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#888780', maxRotation: 0, autoSkip: false } },
         y: {
           grid: { color: 'rgba(136,135,128,0.12)' },
           ticks: { font: { size: 10 }, color: '#888780',
-            callback: v => metric === 'total' ? v+'억' : Math.round(v/10000)+'만' },
-          title: { display: true, text: metric==='total'?'총매출(억원)':'대당매출(원)', font: { size: 11 }, color: '#888780' }
+            callback: v => metric === 'bep_rate' ? v+'%' : Math.round(v/10000)+'만' },
+          title: { display: true, text: metric==='bep_rate'?'BEP 달성률(%)':'대당매출(원)', font: { size: 11 }, color: '#888780' }
         }
       }
     }
