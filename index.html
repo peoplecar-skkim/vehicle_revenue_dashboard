@@ -143,11 +143,11 @@
       <div class="section-header">
         <div class="section-title"><span class="dot"></span> 매출 트렌드</div>
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div style="display:flex;gap:8px" id="year-checkboxes"></div>
           <div class="radio-group" id="trend-view-radio">
             <input type="radio" name="trendview" id="view-weekly" value="weekly" checked onchange="setTrendView('weekly')"><label for="view-weekly">주차별</label>
             <input type="radio" name="trendview" id="view-monthly" value="monthly" onchange="setTrendView('monthly')"><label for="view-monthly">월별</label>
           </div>
-          <div style="display:flex;gap:8px" id="year-checkboxes"></div>
           <div class="radio-group" id="weekly-metric-radio">
             <input type="radio" name="wmetric" id="wm-avg" value="avg" checked onchange="renderTrendChart()"><label for="wm-avg">대당매출</label>
             <input type="radio" name="wmetric" id="wm-bep" value="bep_rate" onchange="renderTrendChart()"><label for="wm-bep">BEP 달성률</label>

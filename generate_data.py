@@ -311,12 +311,10 @@ def main():
         print(f"  → {y}-{m:02d} {reason}")
 
     if not to_generate:
-        print("\n✓ 모든 데이터가 최신 상태예요. 업데이트 불필요!")
-        conn_r.close(); conn_o.close()
-        input("\n엔터를 눌러 종료...")
-        return
+        print("\n✓ 차량별 월간 데이터는 최신 상태예요 (재집계 생략)")
+    else:
+        print()
 
-    print()
     result_months = dict(existing_months)
     for i, (y, m, reason) in enumerate(to_generate, 1):
         key = f"{y}-{m:02d}"
@@ -365,7 +363,7 @@ def main():
     repo_dir = Path(__file__).parent
     try:
         subprocess.run(['git', 'add', 'data.json'], cwd=repo_dir, check=True, capture_output=True)
-        months_str = ', '.join([f"{y}-{m:02d}" for y, m, _ in to_generate])
+        months_str = ', '.join([f"{y}-{m:02d}" for y, m, _ in to_generate]) if to_generate else '주차별/월별 트렌드'
         msg = f"data: {months_str} 업데이트"
         result = subprocess.run(['git', 'commit', '-m', msg], cwd=repo_dir, capture_output=True, text=True)
         if 'nothing to commit' in result.stdout:
