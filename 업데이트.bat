@@ -21,3 +21,5 @@ if %errorlevel% equ 0 (
     echo GitHub 업로드 완료!
 )
 
+echo.
+pause
