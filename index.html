@@ -141,17 +141,21 @@
 
     <div class="section" id="weekly-trend-section">
       <div class="section-header">
-        <div class="section-title"><span class="dot"></span> 주차별 매출 트렌드</div>
+        <div class="section-title"><span class="dot"></span> 매출 트렌드</div>
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div class="radio-group" id="trend-view-radio">
+            <input type="radio" name="trendview" id="view-weekly" value="weekly" checked onchange="setTrendView('weekly')"><label for="view-weekly">주차별</label>
+            <input type="radio" name="trendview" id="view-monthly" value="monthly" onchange="setTrendView('monthly')"><label for="view-monthly">월별</label>
+          </div>
           <div style="display:flex;gap:8px" id="year-checkboxes"></div>
           <div class="radio-group" id="weekly-metric-radio">
-            <input type="radio" name="wmetric" id="wm-avg" value="avg" checked onchange="renderWeeklyChart()"><label for="wm-avg">대당매출</label>
-            <input type="radio" name="wmetric" id="wm-bep" value="bep_rate" onchange="renderWeeklyChart()"><label for="wm-bep">BEP 달성률</label>
+            <input type="radio" name="wmetric" id="wm-avg" value="avg" checked onchange="renderTrendChart()"><label for="wm-avg">대당매출</label>
+            <input type="radio" name="wmetric" id="wm-bep" value="bep_rate" onchange="renderTrendChart()"><label for="wm-bep">BEP 달성률</label>
           </div>
         </div>
       </div>
       <div style="position:relative;width:100%;height:300px"><canvas id="weeklyChart"></canvas></div>
-      <p style="font-size:11px;color:var(--text3);margin-top:.5rem">* 주차 기준: 월요일~일요일 · VAT 제외</p>
+      <p style="font-size:11px;color:var(--text3);margin-top:.5rem" id="trend-footnote">* 주차 기준: 월요일~일요일 · VAT 제외</p>
     </div>
 
     <div class="section">
@@ -276,7 +280,7 @@ function parseBEP(data){
   rows.forEach(row=>{ const n=normalizeCarType(String(row[0]||'').trim()); const b=parseFloat(String(row[1]||'').replace(/,/g,'').trim()); if(n&&!isNaN(b)&&b>0)bepMap[n]=b; });
 }
 
-function setUsageMode(mode){ usageMode=mode; applyFilters(); }
+function setUsageMode(mode){ usageMode=mode; applyFilters(); updateWeeklyMode(); }
 
 function populate(id,values){
   const sel=document.getElementById(id); while(sel.options.length>1)sel.remove(1);
@@ -751,7 +755,8 @@ function downloadCSV(){
 // ── data.json 기반 로직 ──────────────────────────────
 let allData = {};       // 전체 월별 데이터
 let currentMonthKey = ''; // 현재 선택된 연월
-let weeklyRaw = [];      // 주차별 트렌드 원본 데이터
+let weeklyRaw = [];      // 주차별 트렌드 원본 데이터 (구버전: 배열 / 신버전: {all:[],round:[],mix:[]})
+let monthlyRaw = [];     // 월별 트렌드 원본 데이터 ({all:[],round:[],mix:[]})
 
 async function loadData() {
   const el = document.getElementById('data-status');
@@ -761,6 +766,7 @@ async function loadData() {
     const json = await res.json();
     allData = json.months || {};
     weeklyRaw = json.weekly || [];
+    monthlyRaw = json.monthly || [];
 
     // 연/월 드롭다운 초기화
     const available = json.available || Object.keys(allData).sort();
@@ -819,7 +825,7 @@ function loadCurrentMonth() {
 
   // filteredVehicles 세팅 후 렌더
   rawVehicles = vehicles;
-  if (weeklyRaw.length) initWeeklyChart(weeklyRaw);
+  initTrendChart(getWeeklyDataForMode(usageMode), getMonthlyDataForMode(usageMode));
   // 드롭다운 옵션 갱신
   populate('filter-region', vehicles.map(v => v.region));
   populate('filter-type',   vehicles.map(v => v.carType));
@@ -830,10 +836,45 @@ function loadCurrentMonth() {
 // rawVehicles: data.json에서 불러온 월별 차량 데이터
 let rawVehicles = [];
 
-// ── 주차별 트렌드 차트 ──────────────────────────────
+// ── 매출 트렌드 차트 (주차별 / 월별 공용) ──────────────────────────────
 let weeklyChart = null;
 let weeklyData = [];
+let monthlyData = [];
+let trendView = 'weekly'; // 'weekly' | 'monthly'
 const YEAR_COLORS = {'2024':'#185FA5','2025':'#1D9E75','2026':'#E24B4A','2027':'#BA7517'};
+
+// data.json의 weekly/monthly가 구버전(배열) / 신버전({all,round,mix}) 어느 쪽이든 대응
+function getWeeklyDataForMode(mode) {
+  if (Array.isArray(weeklyRaw)) return weeklyRaw; // 구버전: 모드 구분 없이 전체 데이터만 존재
+  return weeklyRaw[mode] || weeklyRaw['all'] || [];
+}
+function getMonthlyDataForMode(mode) {
+  if (!monthlyRaw) return [];
+  if (Array.isArray(monthlyRaw)) return monthlyRaw;
+  return monthlyRaw[mode] || monthlyRaw['all'] || [];
+}
+
+// 전체/왕복전용/혼용 토글 시 트렌드 데이터도 해당 모드로 갱신 (연도 체크박스는 유지)
+function updateWeeklyMode() {
+  weeklyData = getWeeklyDataForMode(usageMode);
+  monthlyData = getMonthlyDataForMode(usageMode);
+  renderTrendChart();
+}
+
+// 주차별/월별 보기 전환
+function setTrendView(view) {
+  trendView = view;
+  const fn = document.getElementById('trend-footnote');
+  if (fn) fn.textContent = view === 'monthly'
+    ? '* 월 기준: 달력월(1일~말일) · VAT 제외'
+    : '* 주차 기준: 월요일~일요일 · VAT 제외';
+  renderTrendChart();
+}
+
+function renderTrendChart() {
+  if (trendView === 'monthly') renderMonthlyChart();
+  else renderWeeklyChart();
+}
 
 function getWeekMonth(year, week) {
   const jan1 = new Date(year, 0, 1);
@@ -856,7 +897,7 @@ function getISOWeek(date) {
   return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
-// 현재(조회 시점) 필터된 차량 기준 가중평균 BEP 산출 (주차별 BEP 달성률 계산용)
+// 현재(조회 시점) 필터된 차량 기준 가중평균 BEP 산출 (BEP 달성률 계산용)
 function getWeightedBEP(vehicles) {
   if (!Object.keys(bepMap).length || !vehicles || !vehicles.length) return null;
   const ctMap = {};
@@ -866,10 +907,13 @@ function getWeightedBEP(vehicles) {
   return tCnt > 0 ? wBEP / tCnt : null;
 }
 
-function initWeeklyChart(data) {
-  weeklyData = data || [];
-  if (!weeklyData.length) return;
-  const years = [...new Set(weeklyData.map(d => String(d.year)))].sort();
+function initTrendChart(weekly, monthly) {
+  weeklyData = weekly || [];
+  monthlyData = monthly || [];
+  const years = [...new Set([
+    ...weeklyData.map(d => String(d.year)),
+    ...monthlyData.map(d => String(d.year))
+  ])].sort();
   const container = document.getElementById('year-checkboxes');
   const thisYear = new Date().getFullYear();
   if (container) {
@@ -878,17 +922,17 @@ function initWeeklyChart(data) {
       const isDefaultOn = Number(y) === thisYear || Number(y) === thisYear - 1;
       return `
       <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer">
-        <input type="checkbox" value="${y}" ${isDefaultOn ? 'checked' : ''} onchange="renderWeeklyChart()"
+        <input type="checkbox" value="${y}" ${isDefaultOn ? 'checked' : ''} onchange="renderTrendChart()"
           style="accent-color:${YEAR_COLORS[y]||'#888'}">
         <span style="color:${YEAR_COLORS[y]||'#888'};font-weight:600">${y}년</span>
       </label>`;
     }).join('');
   }
-  renderWeeklyChart();
+  renderTrendChart();
 }
 
 function renderWeeklyChart() {
-  if (!weeklyData.length) return;
+  if (!weeklyData.length) { if (weeklyChart) weeklyChart.destroy(); return; }
   const metric = document.querySelector('input[name="wmetric"]:checked')?.value || 'avg';
   const checkedYears = [...document.querySelectorAll('#year-checkboxes input:checked')].map(el => el.value);
   const allWeeks = Array.from({length: 53}, (_, i) => i + 1);
@@ -908,7 +952,7 @@ function renderWeeklyChart() {
   const wBEP = metric === 'bep_rate' ? getWeightedBEP(filteredVehicles.length ? filteredVehicles : rawVehicles) : null;
 
   const years = [...new Set(weeklyData.map(d => String(d.year)))].sort().filter(y => checkedYears.includes(y));
-  const datasets = years.map((year, idx) => {
+  const datasets = years.map((year) => {
     const dataMap = {};
     weeklyData.filter(d => String(d.year) === year).forEach(d => { dataMap[d.week] = d; });
     const values = allWeeks.map(w => {
@@ -932,10 +976,56 @@ function renderWeeklyChart() {
     };
   });
 
+  renderTrendCanvas(labels, datasets, metric);
+}
+
+function renderMonthlyChart() {
+  if (!monthlyData.length) { if (weeklyChart) weeklyChart.destroy(); return; }
+  const metric = document.querySelector('input[name="wmetric"]:checked')?.value || 'avg';
+  const checkedYears = [...document.querySelectorAll('#year-checkboxes input:checked')].map(el => el.value);
+  const allMonths = Array.from({length: 12}, (_, i) => i + 1);
+  const labels = allMonths.map(m => [`${m}월`]);
+
+  const today = new Date();
+  const todayYear = today.getFullYear();
+  const todayMonth = today.getMonth() + 1;
+
+  const wBEP = metric === 'bep_rate' ? getWeightedBEP(filteredVehicles.length ? filteredVehicles : rawVehicles) : null;
+
+  const years = [...new Set(monthlyData.map(d => String(d.year)))].sort().filter(y => checkedYears.includes(y));
+  const datasets = years.map((year) => {
+    const dataMap = {};
+    monthlyData.filter(d => String(d.year) === year).forEach(d => { dataMap[d.month] = d; });
+    const values = allMonths.map(m => {
+      // 아직 도래하지 않은 미래 월은 표시하지 않음
+      if (Number(year) === todayYear && m > todayMonth) return null;
+      const d = dataMap[m];
+      if (!d || !d.vehicles) return null;
+      const avgRev = d.totalRev / d.vehicles;
+      if (metric === 'bep_rate') {
+        return wBEP ? Math.round(avgRev / wBEP * 1000) / 10 : null;
+      }
+      return Math.round(avgRev);
+    });
+    const color = YEAR_COLORS[year] || '#888';
+    return {
+      label: `${year}년`, data: values,
+      borderColor: color, backgroundColor: color+'15',
+      borderDash: [], borderWidth: 2,
+      pointRadius: 3, pointHoverRadius: 7,
+      tension: 0.3, spanGaps: false
+    };
+  });
+
+  renderTrendCanvas(labels, datasets, metric);
+}
+
+// 주차별/월별 공통 Chart.js 렌더링
+function renderTrendCanvas(labels, datasets, metric) {
   if (weeklyChart) weeklyChart.destroy();
 
-  if (metric === 'bep_rate' && !wBEP) {
-    // BEP 미로드 상태에서는 안내만 표시
+  if (metric === 'bep_rate' && !Object.keys(bepMap).length) {
+    // BEP 미로드 상태에서는 안내만 표시하고 캔버스는 비움
     const ctx = document.getElementById('weeklyChart').getContext('2d');
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     return;
@@ -969,6 +1059,7 @@ function renderWeeklyChart() {
     }
   });
 }
+
 
 
 async function loadBEP(){

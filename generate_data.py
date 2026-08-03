@@ -52,52 +52,104 @@ def get_row_counts(conn_r, conn_o, available):
 
 
 def generate_weekly(conn_r, conn_o):
-    """전체 연도별 주차별 집계 (왕복+편도)"""
+    """연도별·주차별 집계 (전체 / 왕복전용 / 혼용 3종)
+
+    주의: year와 week는 반드시 같은 기준 날짜(그 주의 월요일)로 계산해야 함.
+    예약시작일 원본 그대로 year를 뽑으면, 연초(예: 1/1이 목요일인 해)에는
+    그 주의 월요일이 전년도 12월에 걸쳐서 (연도, 주차)가 어긋나
+    "다음 해 53주차"라는 유령 데이터가 생김.
+    """
     cur_r = conn_r.cursor()
     cur_r.execute("""
-        SELECT 
-            strftime('%Y', "예약 시작일") as year,
+        SELECT
+            CAST(strftime('%Y', date("예약 시작일", 'weekday 0', '-6 days')) AS INTEGER) as year,
             CAST(strftime('%W', date("예약 시작일", 'weekday 0', '-6 days')) AS INTEGER) + 1 as week,
-            COUNT(DISTINCT 차량번호) as vehicles,
-            SUM(총청구요금) as round_rev
+            차량번호,
+            SUM(총청구요금) as rev
         FROM rentals_카셰어링
         WHERE (내카드주유 = 0 OR 내카드주유 IS NULL)
-        AND "예약 시작일" IS NOT NULL
-        GROUP BY year, week
+          AND "예약 시작일" IS NOT NULL
+        GROUP BY year, week, 차량번호
     """)
-    round_data = {}
-    for year, week, v, rev in cur_r.fetchall():
-        round_data[(year, int(week))] = {'vehicles': v, 'round_rev': (rev or 0)/1.1}
+    round_rows = cur_r.fetchall()  # (year, week, plate, rev)
 
     cur_o = conn_o.cursor()
     cur_o.execute("""
-        SELECT 
-            strftime('%Y', 운행시작일) as year,
+        SELECT
+            CAST(strftime('%Y', date(운행시작일, 'weekday 0', '-6 days')) AS INTEGER) as year,
             CAST(strftime('%W', date(운행시작일, 'weekday 0', '-6 days')) AS INTEGER) + 1 as week,
-            COUNT(DISTINCT 차량번호) as vehicles,
-            SUM(총결제요금) as oneway_rev
+            차량번호,
+            SUM(총결제요금) as rev
         FROM rentals_리턴프리
         WHERE 운행시작일 IS NOT NULL
-        GROUP BY year, week
+        GROUP BY year, week, 차량번호
     """)
-    oneway_data = {}
-    for year, week, v, rev in cur_o.fetchall():
-        oneway_data[(year, int(week))] = {'vehicles': v, 'oneway_rev': (rev or 0)/1.1}
+    oneway_rows = cur_o.fetchall()
 
-    all_keys = set(round_data.keys()) | set(oneway_data.keys())
-    weekly = []
-    for (year, week) in sorted(all_keys):
-        r = round_data.get((year, week), {})
-        o = oneway_data.get((year, week), {})
-        weekly.append({
-            'year': int(year),
-            'week': week,
-            'roundRev': round(r.get('round_rev', 0)),
-            'onewayRev': round(o.get('oneway_rev', 0)),
-            'totalRev': round(r.get('round_rev', 0) + o.get('oneway_rev', 0)),
-            'vehicles': r.get('vehicles', 0)
+    # 주차별 편도 이용 차량 집합 (혼용 판정 기준: 월별 집계와 동일하게 "그 기간에 편도 이력이 있으면 혼용")
+    oneway_plates_by_week = {}
+    for year, week, plate, _rev in oneway_rows:
+        oneway_plates_by_week.setdefault((year, week), set()).add(plate)
+
+    agg = {}
+    def get_bucket(key):
+        if key not in agg:
+            agg[key] = {
+                'all_round': 0.0, 'all_oneway': 0.0, 'all_vehicles': set(),
+                'round_only_rev': 0.0, 'round_only_vehicles': set(),
+                'mix_round_rev': 0.0, 'mix_oneway_rev': 0.0, 'mix_vehicles': set()
+            }
+        return agg[key]
+
+    for year, week, plate, rev in round_rows:
+        key = (year, week)
+        r = (rev or 0) / 1.1
+        a = get_bucket(key)
+        a['all_round'] += r
+        a['all_vehicles'].add(plate)
+        if plate in oneway_plates_by_week.get(key, set()):
+            a['mix_round_rev'] += r
+            a['mix_vehicles'].add(plate)
+        else:
+            a['round_only_rev'] += r
+            a['round_only_vehicles'].add(plate)
+
+    for year, week, plate, rev in oneway_rows:
+        key = (year, week)
+        r = (rev or 0) / 1.1
+        a = get_bucket(key)
+        a['all_oneway'] += r
+        a['all_vehicles'].add(plate)
+        a['mix_oneway_rev'] += r
+        a['mix_vehicles'].add(plate)
+
+    weekly_all, weekly_round, weekly_mix = [], [], []
+    for key in sorted(agg.keys()):
+        year, week = key
+        a = agg[key]
+        weekly_all.append({
+            'year': year, 'week': week,
+            'roundRev': round(a['all_round']),
+            'onewayRev': round(a['all_oneway']),
+            'totalRev': round(a['all_round'] + a['all_oneway']),
+            'vehicles': len(a['all_vehicles'])
         })
-    return weekly
+        weekly_round.append({
+            'year': year, 'week': week,
+            'roundRev': round(a['round_only_rev']),
+            'onewayRev': 0,
+            'totalRev': round(a['round_only_rev']),
+            'vehicles': len(a['round_only_vehicles'])
+        })
+        weekly_mix.append({
+            'year': year, 'week': week,
+            'roundRev': round(a['mix_round_rev']),
+            'onewayRev': round(a['mix_oneway_rev']),
+            'totalRev': round(a['mix_round_rev'] + a['mix_oneway_rev']),
+            'vehicles': len(a['mix_vehicles'])
+        })
+
+    return {'all': weekly_all, 'round': weekly_round, 'mix': weekly_mix}
 
 def generate_month(conn_r, conn_o, year, month):
     dm = calendar.monthrange(year, month)[1]
@@ -148,6 +200,51 @@ def generate_month(conn_r, conn_o, year, month):
             'owHours':     round(ow_hours, 2),
         })
     return vehicles
+
+def generate_monthly_trend(all_months):
+    """월별 매출 트렌드 집계 (전체 / 왕복전용 / 혼용 3종)
+
+    이미 만들어진 result_months(월별 차량 리스트)를 그대로 재사용해서 집계하므로
+    DB를 다시 조회하지 않음. 판정 기준은 generate_weekly와 동일하게
+    "그 기간에 편도 이력이 있으면 혼용".
+    """
+    monthly_all, monthly_round, monthly_mix = [], [], []
+    for key in sorted(all_months.keys()):
+        y_str, m_str = key.split('-')
+        year, month = int(y_str), int(m_str)
+        vehicles = all_months[key]
+
+        all_round  = sum(v.get('roundTotal', 0) for v in vehicles)
+        all_oneway = sum(v.get('onewayTotal', 0) for v in vehicles)
+        all_cnt    = len(vehicles)
+
+        round_only      = [v for v in vehicles if not v.get('isMix')]
+        round_only_rev  = sum(v.get('roundTotal', 0) for v in round_only)
+        round_only_cnt  = len(round_only)
+
+        mix           = [v for v in vehicles if v.get('isMix')]
+        mix_round_rev  = sum(v.get('roundTotal', 0) for v in mix)
+        mix_oneway_rev = sum(v.get('onewayTotal', 0) for v in mix)
+        mix_cnt        = len(mix)
+
+        monthly_all.append({
+            'year': year, 'month': month,
+            'roundRev': round(all_round), 'onewayRev': round(all_oneway),
+            'totalRev': round(all_round + all_oneway), 'vehicles': all_cnt
+        })
+        monthly_round.append({
+            'year': year, 'month': month,
+            'roundRev': round(round_only_rev), 'onewayRev': 0,
+            'totalRev': round(round_only_rev), 'vehicles': round_only_cnt
+        })
+        monthly_mix.append({
+            'year': year, 'month': month,
+            'roundRev': round(mix_round_rev), 'onewayRev': round(mix_oneway_rev),
+            'totalRev': round(mix_round_rev + mix_oneway_rev), 'vehicles': mix_cnt
+        })
+
+    return {'all': monthly_all, 'round': monthly_round, 'mix': monthly_mix}
+
 
 def main():
     print("=" * 55)
@@ -228,10 +325,15 @@ def main():
         result_months[key] = vehicles
         print(f"{len(vehicles)}대 완료")
 
-    # 주차별 집계
+    # 주차별 집계 (전체 / 왕복전용 / 혼용)
     print("\n주차별 집계 중...", end=' ', flush=True)
     weekly_data = generate_weekly(conn_r, conn_o)
-    print(f"{len(weekly_data)}건 완료")
+    print(f"전체 {len(weekly_data['all'])}건 / 왕복전용 {len(weekly_data['round'])}건 / 혼용 {len(weekly_data['mix'])}건 완료")
+
+    # 월별 트렌드 집계 (DB 재조회 없이 result_months 재사용)
+    print("월별 트렌드 집계 중...", end=' ', flush=True)
+    monthly_data = generate_monthly_trend(result_months)
+    print(f"전체 {len(monthly_data['all'])}건 / 왕복전용 {len(monthly_data['round'])}건 / 혼용 {len(monthly_data['mix'])}건 완료")
 
     conn_r.close()
     conn_o.close()
@@ -249,7 +351,8 @@ def main():
         'available': all_available,
         'row_counts': saved_counts,
         'months': {k: result_months[k] for k in all_available},
-        'weekly': weekly_data
+        'weekly': weekly_data,
+        'monthly': monthly_data
     }
 
     print(f"\ndata.json 저장 중...")
