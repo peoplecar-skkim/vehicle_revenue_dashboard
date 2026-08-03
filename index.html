@@ -75,6 +75,9 @@
   .tab-btn{font-size:12px;padding:4px 12px;border:none;cursor:pointer;transition:background .1s;border-radius:6px}
   .row-highlight{background:var(--warn-bg) !important;border-radius:6px}
   .sub-row{font-size:11px;color:var(--text3);display:flex;justify-content:space-between;padding:1px 0}
+  .combined-filter-box{background:var(--surface);border:.5px solid var(--border);border-radius:var(--radius);padding:1rem 1.5rem;margin-bottom:1.25rem}
+  .combined-filter-box .filter-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .combined-filter-box .filter-row+.filter-row{margin-top:.85rem;padding-top:.85rem;border-top:.5px solid var(--border)}
   @media(max-width:680px){.container{padding:1rem}header{padding:0 1rem}.filter-bar{gap:8px}.upload-grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -88,17 +91,17 @@
 </header>
 
 <div class="container">
-  <div id="month-selector" style="display:none;background:var(--surface);border:.5px solid var(--border);border-radius:var(--radius);padding:1rem 1.5rem;margin-bottom:1.25rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-    <span style="font-size:14px;font-weight:600;color:var(--text)">조회 기간</span>
-    <select id="sel-year" onchange="onMonthChange()" style="font-size:15px;padding:6px 14px;border-radius:var(--radius-sm);border:.5px solid var(--border2);background:var(--surface2);color:var(--text);font-weight:600"></select>
-    <span style="font-size:16px;color:var(--text2)">년</span>
-    <select id="sel-month" onchange="onMonthChange()" style="font-size:15px;padding:6px 14px;border-radius:var(--radius-sm);border:.5px solid var(--border2);background:var(--surface2);color:var(--text);font-weight:600"></select>
-    <span style="font-size:16px;color:var(--text2)">월</span>
-    <span id="generated-at" style="margin-left:auto;font-size:11px;color:var(--text3)"></span>
-  </div>
+  <div class="combined-filter-box">
+    <div id="month-selector" class="filter-row">
+      <span style="font-size:14px;font-weight:600;color:var(--text)">조회 기간</span>
+      <select id="sel-year" onchange="onMonthChange()" style="font-size:15px;padding:6px 14px;border-radius:var(--radius-sm);border:.5px solid var(--border2);background:var(--surface2);color:var(--text);font-weight:600"></select>
+      <span style="font-size:16px;color:var(--text2)">년</span>
+      <select id="sel-month" onchange="onMonthChange()" style="font-size:15px;padding:6px 14px;border-radius:var(--radius-sm);border:.5px solid var(--border2);background:var(--surface2);color:var(--text);font-weight:600"></select>
+      <span style="font-size:16px;color:var(--text2)">월</span>
+      <span id="generated-at" style="margin-left:auto;font-size:11px;color:var(--text3)"></span>
+    </div>
 
-  <div id="dashboard">
-    <div class="filter-bar">
+    <div class="filter-row">
       <div class="radio-group" id="usage-radio">
         <input type="radio" name="usage" id="usage-all" value="all" checked onchange="setUsageMode('all')"><label for="usage-all">전체</label>
         <input type="radio" name="usage" id="usage-round" value="round" onchange="setUsageMode('round')"><label for="usage-round">왕복전용</label>
@@ -120,6 +123,9 @@
         조회
       </button>
     </div>
+  </div>
+
+  <div id="dashboard">
 
     <div class="metric-grid">
       <div class="metric-card"><div class="m-label">분석 차량 수</div><div class="m-value" id="m-total">—</div><div class="m-unit">대 (기간내 운영차량)</div></div>
