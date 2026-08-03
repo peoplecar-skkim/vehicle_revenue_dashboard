@@ -365,8 +365,13 @@ def main():
         subprocess.run(['git', 'add', 'data.json'], cwd=repo_dir, check=True, capture_output=True)
         months_str = ', '.join([f"{y}-{m:02d}" for y, m, _ in to_generate]) if to_generate else '주차별/월별 트렌드'
         msg = f"data: {months_str} 업데이트"
-        result = subprocess.run(['git', 'commit', '-m', msg], cwd=repo_dir, capture_output=True, text=True)
-        if 'nothing to commit' in result.stdout:
+        result = subprocess.run(
+            ['git', 'commit', '-m', msg], cwd=repo_dir,
+            capture_output=True, text=True, encoding='utf-8', errors='replace'
+        )
+        stdout = result.stdout or ''
+        stderr = result.stderr or ''
+        if 'nothing to commit' in stdout or 'nothing to commit' in stderr:
             print("변경사항 없음 (Push 생략)")
         else:
             subprocess.run(['git', 'push'], cwd=repo_dir, check=True, capture_output=True)
