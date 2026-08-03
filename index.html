@@ -751,6 +751,7 @@ function downloadCSV(){
 // ── data.json 기반 로직 ──────────────────────────────
 let allData = {};       // 전체 월별 데이터
 let currentMonthKey = ''; // 현재 선택된 연월
+let weeklyRaw = [];      // 주차별 트렌드 원본 데이터
 
 async function loadData() {
   const el = document.getElementById('data-status');
@@ -759,6 +760,7 @@ async function loadData() {
     if (!res.ok) throw new Error(res.status);
     const json = await res.json();
     allData = json.months || {};
+    weeklyRaw = json.weekly || [];
 
     // 연/월 드롭다운 초기화
     const available = json.available || Object.keys(allData).sort();
@@ -817,7 +819,7 @@ function loadCurrentMonth() {
 
   // filteredVehicles 세팅 후 렌더
   rawVehicles = vehicles;
-  if (allData.weekly) initWeeklyChart(allData.weekly);
+  if (weeklyRaw.length) initWeeklyChart(weeklyRaw);
   // 드롭다운 옵션 갱신
   populate('filter-region', vehicles.map(v => v.region));
   populate('filter-type',   vehicles.map(v => v.carType));
