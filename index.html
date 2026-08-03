@@ -146,8 +146,8 @@
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <div style="display:flex;gap:8px" id="year-checkboxes"></div>
           <div class="radio-group" id="weekly-metric-radio">
-            <input type="radio" name="wmetric" id="wm-total" value="total" checked onchange="renderWeeklyChart()"><label for="wm-total">총매출</label>
-            <input type="radio" name="wmetric" id="wm-avg" value="avg" onchange="renderWeeklyChart()"><label for="wm-avg">대당매출</label>
+            <input type="radio" name="wmetric" id="wm-total" value="total" onchange="renderWeeklyChart()"><label for="wm-total">총매출</label>
+            <input type="radio" name="wmetric" id="wm-avg" value="avg" checked onchange="renderWeeklyChart()"><label for="wm-avg">대당매출</label>
           </div>
         </div>
       </div>
@@ -871,13 +871,38 @@ function initWeeklyChart(data) {
 function renderWeeklyChart() {
   if (!weeklyData.length) return;
 
-  const metric = document.querySelector('input[name="wmetric"]:checked')?.value || 'total';
+  const metric = document.querySelector('input[name="wmetric"]:checked')?.value || 'avg';
   const checkedYears = [...document.querySelectorAll('#year-checkboxes input:checked')].map(el => el.value);
 
-  const years = [...new Set(weeklyData.map(d => String(d.year)))].sort().filter(y => checkedYears.includes(y));
-  const allWeeks = [...new Set(weeklyData.map(d => d.week))].sort((a,b)=>a-b);
+  // 1~53주 전체 레이블
+  const allWeeks = Array.from({length: 53}, (_, i) => i + 1);
 
-  const datasets = years.map(year => {
+  // 주차별 월 매핑 (목요일 기준)
+  function getWeekMonth(year, week) {
+    // 해당 연도 1월 1일의 월요일 기준 첫 주 월요일
+    const jan1 = new Date(year, 0, 1);
+    const dayOfWeek = jan1.getDay() || 7;
+    const firstMonday = new Date(jan1);
+    firstMonday.setDate(jan1.getDate() - (dayOfWeek - 1));
+    const monday = new Date(firstMonday);
+    monday.setDate(firstMonday.getDate() + (week - 1) * 7);
+    const thursday = new Date(monday);
+    thursday.setDate(monday.getDate() + 3);
+    return thursday.getMonth() + 1;
+  }
+
+  // X축 레이블: 월이 바뀌는 주차에 월 표시
+  const labels = allWeeks.map(w => {
+    const m = getWeekMonth(2026, w);
+    const prevM = w > 1 ? getWeekMonth(2026, w - 1) : 0;
+    if (m !== prevM) return `${w}주\n(${m}월)`;
+    return `${w}주`;
+  });
+
+  const COLORS = ['#185FA5','#1D9E75','#E24B4A','#BA7517','#7F77DD'];
+  const years = [...new Set(weeklyData.map(d => String(d.year)))].sort().filter(y => checkedYears.includes(y));
+
+  const datasets = years.map((year, idx) => {
     const yearData = weeklyData.filter(d => String(d.year) === year);
     const dataMap = {};
     yearData.forEach(d => { dataMap[d.week] = d; });
@@ -885,27 +910,26 @@ function renderWeeklyChart() {
     const values = allWeeks.map(w => {
       const d = dataMap[w];
       if (!d) return null;
-      if (metric === 'total') return Math.round(d.totalRev / 100000000 * 100) / 100; // 억 단위
-      if (metric === 'avg') return d.vehicles > 0 ? Math.round(d.totalRev / d.vehicles) : null;
-      return null;
+      if (metric === 'total') return Math.round(d.totalRev / 100000000 * 100) / 100;
+      return d.vehicles > 0 ? Math.round(d.totalRev / d.vehicles) : null;
     });
 
+    const color = COLORS[idx % COLORS.length];
     return {
       label: `${year}년`,
       data: values,
-      borderColor: YEAR_COLORS[year] || '#888',
-      backgroundColor: (YEAR_COLORS[year] || '#888') + '20',
-      borderDash: YEAR_DASH[year] || [],
+      borderColor: color,
+      backgroundColor: color + '15',
+      borderDash: [],
       borderWidth: 2,
-      pointRadius: 3,
+      pointRadius: 2,
       pointHoverRadius: 6,
       tension: 0.3,
-      spanGaps: true
+      spanGaps: false
     };
   });
 
-  const labels = allWeeks.map(w => `${w}주`);
-  const yLabel = metric === 'total' ? '매출(억원)' : '대당매출(원)';
+  const yLabel = metric === 'total' ? '총매출(억원)' : '대당매출(원)';
 
   if (weeklyChart) weeklyChart.destroy();
   weeklyChart = new Chart(document.getElementById('weeklyChart'), {
@@ -920,7 +944,7 @@ function renderWeeklyChart() {
           callbacks: {
             label: ctx => {
               const v = ctx.parsed.y;
-              if (v === null) return null;
+              if (v === null || v === undefined) return null;
               if (metric === 'total') return ` ${ctx.dataset.label}: ${v.toFixed(2)}억원`;
               return ` ${ctx.dataset.label}: ${v.toLocaleString()}원`;
             }
@@ -930,13 +954,22 @@ function renderWeeklyChart() {
       scales: {
         x: {
           grid: { display: false },
-          ticks: { font: { size: 10 }, color: '#888780', autoSkip: true, maxTicksLimit: 26 }
+          ticks: {
+            font: { size: 10 },
+            color: '#888780',
+            maxRotation: 0,
+            autoSkip: false,
+            callback: function(val, idx) {
+              return this.getLabelForValue(val);
+            }
+          }
         },
         y: {
           grid: { color: 'rgba(136,135,128,0.12)' },
           ticks: {
-            font: { size: 10 }, color: '#888780',
-            callback: v => metric === 'total' ? v + '억' : v.toLocaleString()
+            font: { size: 10 },
+            color: '#888780',
+            callback: v => metric === 'total' ? v + '억' : (v/10000).toFixed(0) + '만'
           },
           title: { display: true, text: yLabel, font: { size: 11 }, color: '#888780' }
         }
@@ -945,24 +978,3 @@ function renderWeeklyChart() {
   });
 }
 
-async function loadBEP(){
-  const el=document.getElementById('bep-status');
-  try{
-    const res=await fetch('bep.xlsx');
-    if(!res.ok)throw new Error();
-    const buf=await res.arrayBuffer();
-    parseBEP(new Uint8Array(buf));
-    const cnt=Object.keys(bepMap).length;
-    el.textContent=`✓ BEP ${cnt}개 차종`; el.style.color='var(--success-text)';
-    const ls=document.getElementById('bep-load-status'); if(ls)ls.textContent=`${cnt}개 차종 로드됨`;
-    if(filteredVehicles.length){ renderMetrics(); renderBEP(); renderVtype(); }
-  }catch(e){
-    el.textContent='⚠ BEP 로드 실패'; el.style.color='var(--warn-text)';
-    const ls=document.getElementById('bep-load-status'); if(ls)ls.textContent='bep.xlsx 없음';
-  }
-}
-loadBEP();
-loadData();
-</script>
-</body>
-</html>
