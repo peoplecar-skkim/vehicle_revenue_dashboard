@@ -870,16 +870,33 @@ function updateWeeklyMode() {
 // 주차별/월별 보기 전환
 function setTrendView(view) {
   trendView = view;
-  const fn = document.getElementById('trend-footnote');
-  if (fn) fn.textContent = view === 'monthly'
-    ? '* 월 기준: 달력월(1일~말일) · VAT 제외'
-    : '* 주차 기준: 월요일~일요일 · VAT 제외';
   renderTrendChart();
 }
 
+function updateTrendFootnote() {
+  const fn = document.getElementById('trend-footnote');
+  if (!fn) return;
+  const metric = document.querySelector('input[name="wmetric"]:checked')?.value || 'avg';
+  if (trendView === 'monthly') {
+    fn.textContent = metric === 'bep_rate'
+      ? '* 월 기준: 달력월(1일~말일) · 그 달의 매출 ÷ 월 BEP · VAT 제외'
+      : '* 월 기준: 달력월(1일~말일) · VAT 제외';
+  } else {
+    fn.textContent = metric === 'bep_rate'
+      ? '* 주차 기준: 월요일~일요일 · 100%는 그 주가 속한 달의 BEP를 일수 비례로 환산한 "주간 BEP" 기준 · VAT 제외'
+      : '* 주차 기준: 월요일~일요일 · VAT 제외';
+  }
+}
+
 function renderTrendChart() {
+  updateTrendFootnote();
   if (trendView === 'monthly') renderMonthlyChart();
   else renderWeeklyChart();
+}
+
+// 해당 연/월의 일수 (주차별 BEP를 월 일수 기준으로 환산할 때 사용)
+function daysInMonth(year, month) {
+  return new Date(year, month, 0).getDate();
 }
 
 function getWeekMonth(year, week) {
@@ -968,7 +985,12 @@ function renderWeeklyChart() {
       if (!d || !d.vehicles) return null;
       const avgRev = d.totalRev / d.vehicles;
       if (metric === 'bep_rate') {
-        return wBEP ? Math.round(avgRev / wBEP * 1000) / 10 : null;
+        if (!wBEP) return null;
+        // 그 주가 속한 달의 BEP를 일수 기준으로 "주간 BEP"로 환산 (월 BEP ÷ 그 달 일수 × 7)
+        const wMonth = getWeekMonth(Number(year), w);
+        const dim = daysInMonth(Number(year), wMonth);
+        const weeklyBEP = wBEP / dim * 7;
+        return Math.round(avgRev / weeklyBEP * 1000) / 10;
       }
       return Math.round(avgRev);
     });
@@ -1037,9 +1059,25 @@ function renderTrendCanvas(labels, datasets, metric) {
     return;
   }
 
+  // BEP 달성률 모드일 때 100% 기준선을 맨 뒤(아래)에 깔아서 항상 비교 기준이 보이게 함
+  const finalDatasets = metric === 'bep_rate'
+    ? [{
+        label: 'BEP 100% 기준',
+        data: labels.map(() => 100),
+        borderColor: '#B4B2A9',
+        borderDash: [6, 4],
+        borderWidth: 1.5,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        fill: false,
+        tension: 0,
+        order: -1
+      }, ...datasets]
+    : datasets;
+
   weeklyChart = new Chart(document.getElementById('weeklyChart'), {
     type: 'line',
-    data: { labels, datasets },
+    data: { labels, datasets: finalDatasets },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: {
