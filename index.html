@@ -883,7 +883,7 @@ function updateTrendFootnote() {
       : '* 월 기준: 달력월(1일~말일) · VAT 제외';
   } else {
     fn.textContent = metric === 'bep_rate'
-      ? '* 주차 기준: 월요일~일요일 · 100%는 그 주가 속한 달의 BEP를 일수 비례로 환산한 "주간 BEP" 기준 · VAT 제외'
+      ? '* 주차 기준: 월요일~일요일 · 100%는 그 주가 속한 달의 BEP를 일수 비례로 환산한 "주간 BEP" 기준 (달 경계 주차는 근사치) · VAT 제외'
       : '* 주차 기준: 월요일~일요일 · VAT 제외';
   }
 }
@@ -899,13 +899,19 @@ function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
 
-function getWeekMonth(year, week) {
+// 해당 (연도, 주차)의 월요일 날짜
+function getWeekMonday(year, week) {
   const jan1 = new Date(year, 0, 1);
   const dow = jan1.getDay() || 7;
   const firstMonday = new Date(jan1);
   firstMonday.setDate(jan1.getDate() - (dow - 1));
   const monday = new Date(firstMonday);
   monday.setDate(firstMonday.getDate() + (week - 1) * 7);
+  return monday;
+}
+
+function getWeekMonth(year, week) {
+  const monday = getWeekMonday(year, week);
   const thursday = new Date(monday);
   thursday.setDate(monday.getDate() + 3);
   return thursday.getMonth() + 1;
@@ -986,11 +992,11 @@ function renderWeeklyChart() {
       const avgRev = d.totalRev / d.vehicles;
       if (metric === 'bep_rate') {
         if (!wBEP) return null;
-        // 그 주가 속한 달의 BEP를 일수 기준으로 "주간 BEP"로 환산 (월 BEP ÷ 그 달 일수 × 7)
+        // 분자(매출)가 항상 7일치이므로, 분모도 7일 고정으로 맞춤 (일부만 비례시키면 기간 단위가 안 맞아 왜곡됨)
         const wMonth = getWeekMonth(Number(year), w);
         const dim = daysInMonth(Number(year), wMonth);
         const weeklyBEP = wBEP / dim * 7;
-        return Math.round(avgRev / weeklyBEP * 1000) / 10;
+        return weeklyBEP ? Math.round(avgRev / weeklyBEP * 1000) / 10 : null;
       }
       return Math.round(avgRev);
     });
