@@ -3,8 +3,8 @@
 실행: python generate_data.py (또는 업데이트.bat 더블클릭)
 
 증분 업데이트:
-- 연월별 실제 데이터 행 수를 비교해서 변경된 월만 재집계
-- 데이터가 추가/변경되면 행 수가 달라져서 자동 감지
+- 연월별 실제 데이터 행 수 + 매출 합계(SUM)를 비교해서 변경된 월만 재집계
+- 건수가 늘어도, 건수는 그대로인 채 기존 데이터 금액만 보정돼도 자동 감지
 """
 
 import sqlite3, json, re, os, calendar, subprocess, sys
@@ -34,19 +34,22 @@ def get_row_counts(conn_r, conn_o, available):
         key = f"{y}-{m:02d}"
 
         cur_r.execute("""
-            SELECT COUNT(*) FROM rentals_카셰어링
+            SELECT COUNT(*), SUM(총청구요금) FROM rentals_카셰어링
             WHERE "예약 시작일" >= ? AND "예약 시작일" <= ?
             AND (내카드주유 = 0 OR 내카드주유 IS NULL)
         """, (date_from, date_to))
-        cnt_r = cur_r.fetchone()[0]
+        cnt_r, sum_r = cur_r.fetchone()
+        sum_r = round(sum_r or 0)
 
         cur_o.execute("""
-            SELECT COUNT(*) FROM rentals_리턴프리
+            SELECT COUNT(*), SUM(총결제요금) FROM rentals_리턴프리
             WHERE 운행시작일 >= ? AND 운행시작일 <= ?
         """, (date_from, date_to))
-        cnt_o = cur_o.fetchone()[0]
+        cnt_o, sum_o = cur_o.fetchone()
+        sum_o = round(sum_o or 0)
 
-        counts[key] = f"{cnt_r}_{cnt_o}"
+        # 건수뿐 아니라 매출 합계도 포함 → 건수는 그대로인 "금액 보정"도 감지됨
+        counts[key] = f"{cnt_r}_{cnt_o}_{sum_r}_{sum_o}"
 
     return counts
 
@@ -301,7 +304,7 @@ def main():
         if key not in existing_months:
             to_generate.append((y, m, '🆕 신규'))
         elif cur_cnt != prev_cnt:
-            to_generate.append((y, m, f'🔄 재집계 (행수 변경: {prev_cnt} → {cur_cnt})'))
+            to_generate.append((y, m, f'🔄 재집계 (데이터 변경: {prev_cnt} → {cur_cnt})'))
         else:
             to_skip.append(key)
 
