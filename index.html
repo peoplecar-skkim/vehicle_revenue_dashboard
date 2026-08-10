@@ -199,13 +199,13 @@
         <table>
           <thead><tr>
             <th style="width:160px">차종명</th>
-            <th style="width:60px;text-align:right">차량수</th>
+            <th style="width:60px;text-align:right;cursor:pointer;user-select:none" onclick="setCartypeSort('cnt')">차량수<span id="sort-arrow-cnt" style="margin-left:2px"></span></th>
             <th style="text-align:right">왕복매출(대당)</th>
             <th style="text-align:right">편도매출(대당)</th>
             <th style="text-align:right">합계매출(대당)</th>
             <th style="text-align:right">총매출(VAT제외)</th>
             <th style="width:70px;text-align:right">매출비중</th>
-            <th id="th-lowshare" style="width:80px;text-align:right;display:none">저매출차량비중</th>
+            <th id="th-lowshare" style="width:80px;text-align:right;display:none;cursor:pointer;user-select:none" onclick="setCartypeSort('lowPct')">저매출차량비중<span id="sort-arrow-lowPct" style="margin-left:2px"></span></th>
           </tr></thead>
           <tbody id="cartype-table-body"></tbody>
         </table>
@@ -450,6 +450,16 @@ function renderThreshold(){
 }
 
 let _cartypeTab='low',_lastLow=[],_lastAll=[];
+let _cartypeSort={col:'total',dir:'asc'};
+function setCartypeSort(col){
+  if(_cartypeSort.col===col){
+    _cartypeSort.dir = _cartypeSort.dir==='asc'?'desc':'asc';
+  } else {
+    _cartypeSort.col=col;
+    _cartypeSort.dir='desc';
+  }
+  renderCartypeChart(_lastLow,_lastAll);
+}
 
 function setCartypeTab(tab){
   _cartypeTab=tab;
@@ -486,7 +496,19 @@ function renderCartypeChart(lowVehicles,allVehicles){
 
   const minV = parseInt(document.getElementById('cartype-min-vehicle')?.value)||0;
   let entries=Object.entries(ctMap).filter(e=>e[1].cnt>minV);
-  entries = entries.sort((a,b)=>(a[1].total/a[1].cnt)-(b[1].total/b[1].cnt));
+  const sortValue=([name,d])=>{
+    if(_cartypeSort.col==='cnt') return d.cnt;
+    if(_cartypeSort.col==='lowPct') return d.cnt>0 ? (lowCtMap[name]||0)/d.cnt : 0;
+    return d.cnt>0 ? d.total/d.cnt : 0;
+  };
+  const dirMul = _cartypeSort.dir==='asc' ? 1 : -1;
+  entries = entries.sort((a,b)=>dirMul*(sortValue(a)-sortValue(b)));
+
+  // 정렬 화살표 표시 갱신
+  ['cnt','lowPct'].forEach(c=>{
+    const el=document.getElementById(`sort-arrow-${c}`);
+    if(el) el.textContent = _cartypeSort.col===c ? (_cartypeSort.dir==='asc'?'▲':'▼') : '';
+  });
   const SHOW=10;
   const visible=entries.slice(0,SHOW);
   const hidden=entries.slice(SHOW);
