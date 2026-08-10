@@ -205,6 +205,7 @@
             <th style="text-align:right">합계매출(대당)</th>
             <th style="text-align:right">총매출(VAT제외)</th>
             <th style="width:70px;text-align:right">매출비중</th>
+            <th style="width:80px;text-align:right">저매출차량비중</th>
           </tr></thead>
           <tbody id="cartype-table-body"></tbody>
         </table>
@@ -475,6 +476,13 @@ function renderCartypeChart(lowVehicles,allVehicles){
     ctMap[ct].cnt++; ctMap[ct].round+=v.roundTotal||0; ctMap[ct].oneway+=v.onewayTotal||0; ctMap[ct].total+=v.total;
   });
 
+  // 차종별 저매출 차량 수 (탭과 무관하게 항상 lowVehicles 기준으로 집계)
+  const lowCtMap={};
+  lowVehicles.forEach(v=>{
+    const ct=v.carType||'미분류';
+    lowCtMap[ct]=(lowCtMap[ct]||0)+1;
+  });
+
   const minV = parseInt(document.getElementById('cartype-min-vehicle')?.value)||0;
   let entries=Object.entries(ctMap).filter(e=>e[1].cnt>minV);
   entries = entries.sort((a,b)=>(a[1].total/a[1].cnt)-(b[1].total/b[1].cnt));
@@ -490,7 +498,9 @@ function renderCartypeChart(lowVehicles,allVehicles){
     oneway: d.cnt>0?Math.round(d.oneway/d.cnt):0,
     total: d.cnt>0?Math.round(d.total/d.cnt):0,
     grandTotal: Math.round(d.total),
-    pct: grandTotal>0?Math.round(d.total/grandTotal*1000)/10:0
+    pct: grandTotal>0?Math.round(d.total/grandTotal*1000)/10:0,
+    lowCnt: lowCtMap[name]||0,
+    lowPct: d.cnt>0?Math.round((lowCtMap[name]||0)/d.cnt*1000)/10:0
   }));
 
   const renderRow=(e)=>{
@@ -500,6 +510,8 @@ function renderCartypeChart(lowVehicles,allVehicles){
     const avgOneway=d.cnt>0?Math.round(d.oneway/d.cnt):0;
     const avgTotal=d.cnt>0?Math.round(d.total/d.cnt):0;
     const pct=grandTotal>0?(d.total/grandTotal*100):0;
+    const lowCnt=lowCtMap[name]||0;
+    const lowPct=d.cnt>0?(lowCnt/d.cnt*100):0;
     return `<tr style="${hl?'background:var(--warn-bg)':''}">
       <td><strong style="${hl?'font-weight:700':''}"}>${name}</strong></td>
       <td class="num">${d.cnt}대</td>
@@ -508,6 +520,7 @@ function renderCartypeChart(lowVehicles,allVehicles){
       <td class="num"><strong>${avgTotal.toLocaleString()}원</strong></td>
       <td class="num" style="color:var(--text2)">${Math.round(d.total).toLocaleString()}원</td>
       <td class="num"><span style="font-size:12px;font-weight:600;color:${pct>=10?'var(--accent)':'var(--text3)'}">${pct.toFixed(1)}%</span></td>
+      <td class="num"><span style="font-size:12px;font-weight:600;color:${lowPct>=50?'var(--danger)':'var(--text3)'}">${lowCnt}대 (${lowPct.toFixed(1)}%)</span></td>
     </tr>`;
   };
 
@@ -526,8 +539,8 @@ function renderCartypeChart(lowVehicles,allVehicles){
 function downloadCartypeCSV(){
   const data=window._cartypeDownloadData;
   if(!data||!data.length)return;
-  const header='차종명,차량수,왕복매출(대당),편도매출(대당),합계매출(대당),총매출,매출비중(%)\n';
-  const body=data.map(d=>`${d.name},${d.cnt},${d.round},${d.oneway},${d.total},${d.grandTotal},${d.pct}`).join('\n');
+  const header='차종명,차량수,왕복매출(대당),편도매출(대당),합계매출(대당),총매출,매출비중(%),저매출차량수,저매출차량비중(%)\n';
+  const body=data.map(d=>`${d.name},${d.cnt},${d.round},${d.oneway},${d.total},${d.grandTotal},${d.pct},${d.lowCnt},${d.lowPct}`).join('\n');
   const blob=new Blob(['\uFEFF'+header+body],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download=`차종분포_${_cartypeTab==='low'?'저매출':'전체'}_${new Date().toISOString().slice(0,10)}.csv`;
