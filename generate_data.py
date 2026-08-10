@@ -365,9 +365,12 @@ def main():
     print("\nGitHub에 업로드 중...")
     repo_dir = Path(__file__).parent
     try:
-        subprocess.run(['git', 'add', 'data.json'], cwd=repo_dir, check=True, capture_output=True)
-        months_str = ', '.join([f"{y}-{m:02d}" for y, m, _ in to_generate]) if to_generate else '주차별/월별 트렌드'
-        msg = f"data: {months_str} 업데이트"
+        subprocess.run(['git', 'add', '-A'], cwd=repo_dir, check=True, capture_output=True)
+        if to_generate:
+            months_str = ', '.join([f"{y}-{m:02d}" for y, m, _ in to_generate])
+            msg = f"data: {months_str} 업데이트"
+        else:
+            msg = "대시보드 업데이트"
         result = subprocess.run(
             ['git', 'commit', '-m', msg], cwd=repo_dir,
             capture_output=True, text=True, encoding='utf-8', errors='replace'
