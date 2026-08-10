@@ -53,6 +53,8 @@
   .table-scroll{overflow-x:auto;border-radius:var(--radius-sm);border:.5px solid var(--border)}
   table{width:100%;border-collapse:collapse;font-size:13px}
   thead th{background:var(--surface2);padding:9px 14px;text-align:left;font-weight:600;color:var(--text2);font-size:12px;border-bottom:.5px solid var(--border);white-space:nowrap}
+  thead th.sortable-th{cursor:pointer;user-select:none}
+  thead th.sortable-th:hover{color:var(--text)}
   tbody tr{border-bottom:.5px solid var(--border)}
   tbody tr:last-child{border-bottom:none}
   tbody tr:hover{background:var(--surface2)}
@@ -185,8 +187,8 @@
             CSV 다운로드
           </button>
           <div style="display:flex;border:.5px solid var(--border2);border-radius:var(--radius-sm);overflow:hidden">
-            <button class="tab-btn" id="tab-all" onclick="setCartypeTab('all')" style="background:var(--surface);color:var(--text2)">전체</button>
-            <button class="tab-btn" id="tab-low" onclick="setCartypeTab('low')" style="background:var(--accent);color:#fff">저매출</button>
+            <button class="tab-btn" id="tab-all" onclick="setCartypeTab('all')" style="background:var(--accent);color:#fff">전체</button>
+            <button class="tab-btn" id="tab-low" onclick="setCartypeTab('low')" style="background:var(--surface);color:var(--text2)">저매출</button>
           </div>
         </div>
       </div>
@@ -198,14 +200,14 @@
       <div class="table-scroll">
         <table>
           <thead><tr>
-            <th style="width:160px">차종명</th>
-            <th style="width:60px;text-align:right;cursor:pointer;user-select:none" onclick="setCartypeSort('cnt')">차량수<span id="sort-arrow-cnt" style="margin-left:2px"></span></th>
-            <th style="text-align:right">왕복매출(대당)</th>
-            <th style="text-align:right">편도매출(대당)</th>
-            <th style="text-align:right">합계매출(대당)</th>
-            <th style="text-align:right">총매출(VAT제외)</th>
-            <th style="width:70px;text-align:right">매출비중</th>
-            <th id="th-lowshare" style="width:80px;text-align:right;display:none;cursor:pointer;user-select:none" onclick="setCartypeSort('lowPct')">저매출차량비중<span id="sort-arrow-lowPct" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="width:160px" onclick="setCartypeSort('name')">차종명<span id="sort-arrow-name" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="width:60px;text-align:right" onclick="setCartypeSort('cnt')">차량수<span id="sort-arrow-cnt" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="text-align:right" onclick="setCartypeSort('avgRound')">왕복매출(대당)<span id="sort-arrow-avgRound" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="text-align:right" onclick="setCartypeSort('avgOneway')">편도매출(대당)<span id="sort-arrow-avgOneway" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="text-align:right" onclick="setCartypeSort('total')">합계매출(대당)<span id="sort-arrow-total" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="text-align:right" onclick="setCartypeSort('grandTotal')">총매출(VAT제외)<span id="sort-arrow-grandTotal" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="width:70px;text-align:right" onclick="setCartypeSort('grandTotal')">매출비중<span id="sort-arrow-pct" style="margin-left:2px"></span></th>
+            <th id="th-lowshare" class="sortable-th" style="width:80px;text-align:right" onclick="setCartypeSort('lowPct')">저매출차량비중<span id="sort-arrow-lowPct" style="margin-left:2px"></span></th>
           </tr></thead>
           <tbody id="cartype-table-body"></tbody>
         </table>
@@ -244,15 +246,15 @@
       <div class="table-scroll">
         <table>
           <thead><tr>
-            <th style="width:110px">차량번호</th>
-            <th style="width:100px">차종명</th>
-            <th style="width:80px">차량유형</th>
-            <th style="width:70px">운영형태</th>
-            <th style="width:90px">지역</th>
-            <th style="width:100px;text-align:right">왕복매출</th>
-            <th style="width:100px;text-align:right">편도매출</th>
-            <th style="width:110px;text-align:right">합계(VAT제외)</th>
-            <th style="width:80px">매출등급</th>
+            <th class="sortable-th" style="width:110px" onclick="setLowTableSort('plate')">차량번호<span id="lt-arrow-plate" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="width:100px" onclick="setLowTableSort('carType')">차종명<span id="lt-arrow-carType" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="width:80px" onclick="setLowTableSort('vtype')">차량유형<span id="lt-arrow-vtype" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="width:70px" onclick="setLowTableSort('isMix')">운영형태<span id="lt-arrow-isMix" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="width:90px" onclick="setLowTableSort('region')">지역<span id="lt-arrow-region" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="width:100px;text-align:right" onclick="setLowTableSort('roundTotal')">왕복매출<span id="lt-arrow-roundTotal" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="width:100px;text-align:right" onclick="setLowTableSort('onewayTotal')">편도매출<span id="lt-arrow-onewayTotal" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="width:110px;text-align:right" onclick="setLowTableSort('total')">합계(VAT제외)<span id="lt-arrow-total" style="margin-left:2px"></span></th>
+            <th class="sortable-th" style="width:80px" onclick="setLowTableSort('total')">매출등급<span id="lt-arrow-grade" style="margin-left:2px"></span></th>
           </tr></thead>
           <tbody id="low-table"></tbody>
         </table>
@@ -427,6 +429,17 @@ function renderChart(){
   });
 }
 
+let _lowTableSort={col:null,dir:'asc'};
+function setLowTableSort(col){
+  if(_lowTableSort.col===col){
+    _lowTableSort.dir=_lowTableSort.dir==='asc'?'desc':'asc';
+  } else {
+    _lowTableSort.col=col;
+    _lowTableSort.dir = ['plate','carType','vtype','region'].includes(col) ? 'asc' : 'desc';
+  }
+  renderThreshold();
+}
+
 function renderThreshold(){
   if(!filteredVehicles.length){
     document.getElementById('low-table').innerHTML='<tr class="empty-row"><td colspan="9">데이터 없음</td></tr>';
@@ -435,11 +448,30 @@ function renderThreshold(){
   }
   const pct=parseInt(document.getElementById('threshold-pct').value)||20;
   const threshold=getPctValue(pct);
-  const lowVehicles=filteredVehicles.filter(v=>v.total<=threshold);
+  let lowVehicles=filteredVehicles.filter(v=>v.total<=threshold);
   document.getElementById('m-low').textContent=lowVehicles.length.toLocaleString();
   document.getElementById('low-count-label').textContent=`총 ${lowVehicles.length}대 추출`;
   const p30=getPctValue(30); const tbody=document.getElementById('low-table');
   if(!lowVehicles.length){tbody.innerHTML='<tr class="empty-row"><td colspan="9">해당 차량 없음</td></tr>';renderChart();return;}
+
+  if(_lowTableSort.col){
+    const col=_lowTableSort.col;
+    const mul=_lowTableSort.dir==='asc'?1:-1;
+    lowVehicles=[...lowVehicles].sort((a,b)=>{
+      let va,vb;
+      if(col==='isMix'){ va=a.isMix?1:0; vb=b.isMix?1:0; }
+      else if(col==='roundTotal'||col==='onewayTotal'){ va=a[col]||0; vb=b[col]||0; }
+      else { va=a[col]; vb=b[col]; }
+      if(typeof va==='string') return mul*va.localeCompare(vb,'ko');
+      return mul*((va||0)-(vb||0));
+    });
+  }
+  ['plate','carType','vtype','isMix','region','roundTotal','onewayTotal','total'].forEach(c=>{
+    const el=document.getElementById(`lt-arrow-${c}`);
+    if(el) el.textContent = _lowTableSort.col===c ? (_lowTableSort.dir==='asc'?'▲':'▼') : '';
+  });
+  { const gEl=document.getElementById('lt-arrow-grade'); if(gEl) gEl.textContent = _lowTableSort.col==='total' ? (_lowTableSort.dir==='asc'?'▲':'▼') : ''; }
+
   tbody.innerHTML=lowVehicles.slice(0,300).map(v=>{
     const grade=v.total<threshold*.5?'<span class="badge low">매우 저조</span>':v.total<p30*.7?'<span class="badge mid">저조</span>':'<span class="badge high">보통</span>';
     const mixBadge=v.isMix?'<span class="badge mix">혼용</span>':'<span style="color:var(--text3);font-size:12px">왕복전용</span>';
@@ -449,14 +481,14 @@ function renderThreshold(){
   renderCartypeChart(lowVehicles,filteredVehicles);
 }
 
-let _cartypeTab='low',_lastLow=[],_lastAll=[];
+let _cartypeTab='all',_lastLow=[],_lastAll=[];
 let _cartypeSort={col:'total',dir:'asc'};
 function setCartypeSort(col){
   if(_cartypeSort.col===col){
     _cartypeSort.dir = _cartypeSort.dir==='asc'?'desc':'asc';
   } else {
     _cartypeSort.col=col;
-    _cartypeSort.dir='desc';
+    _cartypeSort.dir = col==='name' ? 'asc' : 'desc';
   }
   renderCartypeChart(_lastLow,_lastAll);
 }
@@ -497,18 +529,29 @@ function renderCartypeChart(lowVehicles,allVehicles){
   const minV = parseInt(document.getElementById('cartype-min-vehicle')?.value)||0;
   let entries=Object.entries(ctMap).filter(e=>e[1].cnt>minV);
   const sortValue=([name,d])=>{
-    if(_cartypeSort.col==='cnt') return d.cnt;
-    if(_cartypeSort.col==='lowPct') return d.cnt>0 ? (lowCtMap[name]||0)/d.cnt : 0;
-    return d.cnt>0 ? d.total/d.cnt : 0;
+    switch(_cartypeSort.col){
+      case 'name': return name;
+      case 'cnt': return d.cnt;
+      case 'avgRound': return d.cnt>0 ? d.round/d.cnt : 0;
+      case 'avgOneway': return d.cnt>0 ? d.oneway/d.cnt : 0;
+      case 'grandTotal': return d.total;
+      case 'lowPct': return d.cnt>0 ? (lowCtMap[name]||0)/d.cnt : 0;
+      default: return d.cnt>0 ? d.total/d.cnt : 0; // 'total' = 합계매출(대당)
+    }
   };
   const dirMul = _cartypeSort.dir==='asc' ? 1 : -1;
-  entries = entries.sort((a,b)=>dirMul*(sortValue(a)-sortValue(b)));
+  entries = entries.sort((a,b)=>{
+    const va=sortValue(a), vb=sortValue(b);
+    if(typeof va==='string') return dirMul*va.localeCompare(vb,'ko');
+    return dirMul*(va-vb);
+  });
 
   // 정렬 화살표 표시 갱신
-  ['cnt','lowPct'].forEach(c=>{
+  ['name','cnt','avgRound','avgOneway','total','grandTotal','lowPct'].forEach(c=>{
     const el=document.getElementById(`sort-arrow-${c}`);
     if(el) el.textContent = _cartypeSort.col===c ? (_cartypeSort.dir==='asc'?'▲':'▼') : '';
   });
+  { const pctEl=document.getElementById('sort-arrow-pct'); if(pctEl) pctEl.textContent = _cartypeSort.col==='grandTotal' ? (_cartypeSort.dir==='asc'?'▲':'▼') : ''; }
   const SHOW=10;
   const visible=entries.slice(0,SHOW);
   const hidden=entries.slice(SHOW);
@@ -580,6 +623,17 @@ function toggleCartypeMore(){
   btn.textContent=open?`더보기 (${hiddenCount}개)`:'접기';
 }
 
+let _bepSort={col:null,dir:'asc'};
+function setBEPSort(col){
+  if(_bepSort.col===col){
+    _bepSort.dir=_bepSort.dir==='asc'?'desc':'asc';
+  } else {
+    _bepSort.col=col;
+    _bepSort.dir = col==='ct' ? 'asc' : 'desc';
+  }
+  if(window.setBEPFilter) window.setBEPFilter(window._bepCurrentFilter||'all');
+}
+
 function renderBEP(){
   const el=document.getElementById('bep-content');
   el.style.textAlign='left'; el.style.padding='0';
@@ -614,6 +668,21 @@ function renderBEP(){
       :filter==='over'?matched.filter(i=>Math.round(i.rate)>=100)
       :matched.filter(i=>Math.round(i.rate)<100);
     list=list.filter(i=>i.vCnt>=minV);
+
+    if(_bepSort.col){
+      const col=_bepSort.col, mul=_bepSort.dir==='asc'?1:-1;
+      list=[...list].sort((a,b)=>{
+        const va=a[col], vb=b[col];
+        if(typeof va==='string') return mul*va.localeCompare(vb,'ko');
+        return mul*((va||0)-(vb||0));
+      });
+    }
+    ['ct','vCnt','avgRound','avgOneway','avgTotal','bep','rate','utilTotal'].forEach(c=>{
+      const el=document.getElementById(`bep-arrow-${c}`);
+      if(el) el.textContent = _bepSort.col===c ? (_bepSort.dir==='asc'?'▲':'▼') : '';
+    });
+    { const rg=document.getElementById('bep-arrow-rateGauge'); if(rg) rg.textContent = _bepSort.col==='rate' ? (_bepSort.dir==='asc'?'▲':'▼') : ''; }
+
     if(!list.length)return '<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:1.5rem">해당 항목 없음</td></tr>';
     return list.map(item=>{
       const rate=Math.round(item.rate), isOver=rate>=100;
@@ -664,15 +733,15 @@ function renderBEP(){
     <div class="table-scroll">
       <table>
         <thead><tr>
-          <th style="width:160px">차종명</th>
-          <th style="width:60px;text-align:right">차량수</th>
-          <th style="width:130px">달성도</th>
-          <th style="text-align:right">왕복(대당)</th>
-          <th style="text-align:right">편도(대당)</th>
-          <th style="text-align:right">합계(대당)</th>
-          <th style="text-align:right">BEP</th>
-          <th style="width:80px;text-align:right">달성률</th>
-          <th style="width:80px;text-align:right">가동률</th>
+          <th class="sortable-th" style="width:160px" onclick="setBEPSort('ct')">차종명<span id="bep-arrow-ct" style="margin-left:2px"></span></th>
+          <th class="sortable-th" style="width:60px;text-align:right" onclick="setBEPSort('vCnt')">차량수<span id="bep-arrow-vCnt" style="margin-left:2px"></span></th>
+          <th class="sortable-th" style="width:130px" onclick="setBEPSort('rate')">달성도<span id="bep-arrow-rateGauge" style="margin-left:2px"></span></th>
+          <th class="sortable-th" style="text-align:right" onclick="setBEPSort('avgRound')">왕복(대당)<span id="bep-arrow-avgRound" style="margin-left:2px"></span></th>
+          <th class="sortable-th" style="text-align:right" onclick="setBEPSort('avgOneway')">편도(대당)<span id="bep-arrow-avgOneway" style="margin-left:2px"></span></th>
+          <th class="sortable-th" style="text-align:right" onclick="setBEPSort('avgTotal')">합계(대당)<span id="bep-arrow-avgTotal" style="margin-left:2px"></span></th>
+          <th class="sortable-th" style="text-align:right" onclick="setBEPSort('bep')">BEP<span id="bep-arrow-bep" style="margin-left:2px"></span></th>
+          <th class="sortable-th" style="width:80px;text-align:right" onclick="setBEPSort('rate')">달성률<span id="bep-arrow-rate" style="margin-left:2px"></span></th>
+          <th class="sortable-th" style="width:80px;text-align:right" onclick="setBEPSort('utilTotal')">가동률<span id="bep-arrow-utilTotal" style="margin-left:2px"></span></th>
         </tr></thead>
         <tbody id="bep-table-body">${renderRows('all',5)}</tbody>
       </table>
@@ -692,6 +761,17 @@ function renderBEP(){
       ?(window._bepUnmatched.length?window._bepUnmatched.sort().map(ct=>`<tr><td colspan="7" style="color:var(--text2)">${ct}</td></tr>`).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:1.5rem">없음</td></tr>')
       :window._renderRows(filter,minV);
   };
+}
+
+let _vtypeSort={col:null,dir:'asc'};
+function setVtypeSort(col){
+  if(_vtypeSort.col===col){
+    _vtypeSort.dir=_vtypeSort.dir==='asc'?'desc':'asc';
+  } else {
+    _vtypeSort.col=col;
+    _vtypeSort.dir = col==='vt' ? 'asc' : 'desc';
+  }
+  renderVtype();
 }
 
 function renderVtype(){
@@ -723,7 +803,17 @@ function renderVtype(){
     const isOver=rate!=null&&Math.round(rate)>=100;
     const pct=vtGrandTotal>0?v.total/vtGrandTotal*100:0;
     return {vt,avg,avgRound,avgOneway,cnt:v.cnt,vtTotal:v.total,pct,avgBEP,rate,isOver};
-  }).sort((a,b)=>vtypeOrder(a.vt)-vtypeOrder(b.vt));
+  });
+  if(_vtypeSort.col){
+    const col=_vtypeSort.col, mul=_vtypeSort.dir==='asc'?1:-1;
+    items.sort((a,b)=>{
+      const va=a[col], vb=b[col];
+      if(typeof va==='string') return mul*va.localeCompare(vb,'ko');
+      return mul*((va||0)-(vb||0));
+    });
+  } else {
+    items.sort((a,b)=>vtypeOrder(a.vt)-vtypeOrder(b.vt));
+  }
 
   const hasBEP=Object.keys(bepMap).length>0;
   const maxAvg=Math.max(...items.map(i=>i.avg));
@@ -737,15 +827,15 @@ function renderVtype(){
     <div class="table-scroll">
       <table>
         <thead><tr>
-          <th style="width:130px">차량유형</th>
-          <th style="width:60px;text-align:right">차량수</th>
-          <th style="width:130px">달성률 게이지</th>
-          <th style="text-align:right">왕복(대당)</th>
-          <th style="text-align:right">편도(대당)</th>
-          <th style="text-align:right">합계(대당)</th>
-          ${hasBEP?'<th style="text-align:right">가중평균 BEP</th><th style="width:80px;text-align:right">달성률</th>':''}
-          <th style="text-align:right">총매출(VAT제외)</th>
-          <th style="width:70px;text-align:right">매출비중</th>
+          <th class="sortable-th" style="width:130px" onclick="setVtypeSort('vt')">차량유형<span id="vt-arrow-vt" style="margin-left:2px"></span></th>
+          <th class="sortable-th" style="width:60px;text-align:right" onclick="setVtypeSort('cnt')">차량수<span id="vt-arrow-cnt" style="margin-left:2px"></span></th>
+          <th class="sortable-th" style="width:130px" onclick="setVtypeSort('rate')">달성률 게이지<span id="vt-arrow-rateGauge" style="margin-left:2px"></span></th>
+          <th class="sortable-th" style="text-align:right" onclick="setVtypeSort('avgRound')">왕복(대당)<span id="vt-arrow-avgRound" style="margin-left:2px"></span></th>
+          <th class="sortable-th" style="text-align:right" onclick="setVtypeSort('avgOneway')">편도(대당)<span id="vt-arrow-avgOneway" style="margin-left:2px"></span></th>
+          <th class="sortable-th" style="text-align:right" onclick="setVtypeSort('avg')">합계(대당)<span id="vt-arrow-avg" style="margin-left:2px"></span></th>
+          ${hasBEP?'<th class="sortable-th" style="text-align:right" onclick="setVtypeSort(\'avgBEP\')">가중평균 BEP<span id="vt-arrow-avgBEP" style="margin-left:2px"></span></th><th class="sortable-th" style="width:80px;text-align:right" onclick="setVtypeSort(\'rate\')">달성률<span id="vt-arrow-rate" style="margin-left:2px"></span></th>':''}
+          <th class="sortable-th" style="text-align:right" onclick="setVtypeSort('vtTotal')">총매출(VAT제외)<span id="vt-arrow-vtTotal" style="margin-left:2px"></span></th>
+          <th class="sortable-th" style="width:70px;text-align:right" onclick="setVtypeSort('vtTotal')">매출비중<span id="vt-arrow-pct" style="margin-left:2px"></span></th>
         </tr></thead>
         <tbody>
           ${items.map(item=>{
@@ -781,6 +871,13 @@ function renderVtype(){
       </table>
     </div>
     <p style="font-size:11px;color:var(--text3);margin-top:1rem">* 차량유형별 BEP = 해당 유형 내 차종별 BEP 단순평균 · VAT 제외</p>`;
+
+  ['vt','cnt','rate','avgRound','avgOneway','avg','avgBEP','vtTotal'].forEach(c=>{
+    const e=document.getElementById(`vt-arrow-${c}`);
+    if(e) e.textContent = _vtypeSort.col===c ? (_vtypeSort.dir==='asc'?'▲':'▼') : '';
+  });
+  { const rg=document.getElementById('vt-arrow-rateGauge'); if(rg) rg.textContent = _vtypeSort.col==='rate' ? (_vtypeSort.dir==='asc'?'▲':'▼') : ''; }
+  { const pg=document.getElementById('vt-arrow-pct'); if(pg) pg.textContent = _vtypeSort.col==='vtTotal' ? (_vtypeSort.dir==='asc'?'▲':'▼') : ''; }
 }
 
 function downloadCSV(){
